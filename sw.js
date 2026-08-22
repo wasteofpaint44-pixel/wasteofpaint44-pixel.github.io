@@ -1,8 +1,8 @@
 // Ledger service worker — caches the app shell so it installs and works offline.
-// Bump this string whenever budget.html changes and you want clients to pick up
+// Bump this string whenever index.html changes and you want clients to pick up
 // the new version promptly rather than waiting on the stale-while-revalidate fetch.
 const CACHE_NAME = "ledger-cache-v1";
-const APP_SHELL = ["./budget.html", "./manifest.json", "./icon.svg"];
+const APP_SHELL = ["./", "./index.html", "./manifest.json", "./icon.svg"];
 
 self.addEventListener("install", function (event) {
   event.waitUntil(
@@ -44,7 +44,7 @@ self.addEventListener("fetch", function (event) {
           return res;
         })
         .catch(function () {
-          return cached || caches.match("./budget.html");
+          return cached || caches.match("./index.html");
         });
       return cached || network;
     })
