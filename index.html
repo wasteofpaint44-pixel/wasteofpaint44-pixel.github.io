@@ -1,0 +1,1684 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1.0" />
+<title>Ledger — Budget</title>
+<link rel="manifest" href="manifest.json" />
+<meta name="theme-color" content="#0B0B0C" />
+<link rel="icon" href="icon.svg" type="image/svg+xml" />
+<link rel="apple-touch-icon" href="icon.svg" />
+<meta name="apple-mobile-web-app-capable" content="yes" />
+<meta name="apple-mobile-web-app-status-bar-style" content="black-translucent" />
+<meta name="apple-mobile-web-app-title" content="Ledger" />
+<style>
+  :root{
+    /* statement-slip palette: ink on paper, credits blue, debits red */
+    --wash:#ECECEF; --card:#FFFFFF; --ink:#0B0B0C; --sub:#5C5C66;
+    --line:#0B0B0C; --hair:#E1E1E6; --track:#E6E6EB;
+    --income:#0040E0; --incomeSoft:#DCE4FF;
+    --spend:#D92300; --spendBright:#FF3B00;
+    --mono:ui-monospace,'SF Mono',SFMono-Regular,'JetBrains Mono','Roboto Mono',Menlo,Consolas,monospace;
+    --sans:system-ui,-apple-system,'Segoe UI',Roboto,'Helvetica Neue',Arial,sans-serif;
+  }
+  *{box-sizing:border-box}
+  body{margin:0;background:var(--wash);color:var(--ink);font-family:var(--sans);
+       font-size:15px;line-height:1.4;padding:26px 16px 72px;-webkit-font-smoothing:antialiased}
+  .wrap{max-width:840px;margin:0 auto}
+  /* every figure is monospace — a ledger's whole job is digits that line up */
+  .tnum{font-family:var(--mono);font-variant-numeric:tabular-nums;font-feature-settings:'tnum'}
+  .display{font-weight:800;letter-spacing:-.02em}
+  .month{font-size:24px;font-weight:800;letter-spacing:-.025em}
+  .eyebrow{font-family:var(--mono);font-size:11px;letter-spacing:.18em;
+       text-transform:uppercase;color:var(--sub)}
+  .card{background:var(--card);border:1.5px solid var(--line);border-radius:6px}
+
+  /* signature: the month's bottom line, inverted */
+  .hero{background:var(--ink);border-color:var(--ink);color:#fff}
+  .hero .eyebrow{color:#9C9CA8}
+  .net{font-family:var(--mono);font-variant-numeric:tabular-nums;
+       font-size:clamp(42px,11vw,68px);font-weight:700;line-height:1;letter-spacing:-.045em}
+  .flow{display:grid;grid-template-columns:auto 1fr auto;gap:9px 12px;
+       align-items:center;margin-top:24px}
+  .flow-k{font-family:var(--mono);font-size:11px;letter-spacing:.16em;
+       text-transform:uppercase;color:#9C9CA8}
+  .flow-t{height:10px;background:#26262C;border-radius:2px;overflow:hidden}
+  .flow-b{height:100%;width:0;border-radius:2px;transition:width .4s cubic-bezier(.2,.7,.3,1)}
+  .flow-v{font-family:var(--mono);font-variant-numeric:tabular-nums;font-size:14px}
+
+  input,select{border:1.5px solid var(--line);background:var(--card);border-radius:5px;
+       padding:11px 12px;font-size:15px;color:var(--ink);outline:none;font-family:var(--sans)}
+  input:focus,select:focus{border-color:var(--income);outline:2px solid var(--income);outline-offset:1px}
+  button{font-family:var(--sans);cursor:pointer}
+  button:focus-visible{outline:2px solid var(--income);outline-offset:2px}
+  .ghost{background:var(--card);border:1.5px solid var(--line);border-radius:5px;
+       padding:8px 11px;font-family:var(--mono);font-size:11px;letter-spacing:.1em;
+       text-transform:uppercase;color:var(--ink)}
+  .ghost:hover{background:var(--ink);color:var(--card)}
+  .nav{background:var(--card);border:1.5px solid var(--line);border-radius:5px;width:32px;
+       height:32px;font-size:17px;color:var(--ink);line-height:1}
+  .nav:hover{background:var(--ink);color:var(--card)}
+  .addbtn{background:var(--income);color:#fff;border:1.5px solid var(--income);border-radius:5px;
+       padding:11px 22px;font-size:15px;font-weight:700}
+  .addbtn:hover{background:#0032B4;border-color:#0032B4}
+  .del{background:transparent;border:none;color:var(--sub);font-size:19px;padding:0 5px;line-height:1}
+  .del:hover{color:var(--spend)}
+  .sec{font-family:var(--mono);font-size:11px;letter-spacing:.16em;text-transform:uppercase;
+       color:var(--sub);margin:4px 2px 9px}
+  .row{display:flex;align-items:center;gap:10px;padding:13px 15px}
+  .row+.row{border-top:1px solid var(--hair)}
+  .barbg{height:9px;background:var(--track);border-radius:2px;overflow:hidden}
+  .bar{height:100%;background:var(--spendBright);border-radius:2px}
+  .drawer-bg{position:fixed;inset:0;background:rgba(11,11,12,.55);display:flex;
+       justify-content:flex-end;z-index:10}
+  .drawer{width:360px;max-width:92vw;height:100%;background:var(--wash);padding:22px;
+       overflow-y:auto;border-left:1.5px solid var(--ink)}
+  .seg{display:inline-flex;border:1.5px solid var(--line);border-radius:5px;overflow:hidden}
+  .seg button{background:var(--card);border:none;padding:11px 16px;font-family:var(--mono);
+       font-size:11px;letter-spacing:.1em;text-transform:uppercase;color:var(--sub);cursor:pointer}
+  .seg button+button{border-left:1.5px solid var(--line)}
+  .seg button.on-out{background:var(--spend);color:#fff}
+  .seg button.on-in{background:var(--income);color:#fff}
+  .hide{display:none}
+  .menuRow{display:flex;align-items:center;justify-content:space-between;width:100%;text-align:left;
+       background:var(--card);border:1.5px solid var(--line);border-radius:6px;padding:16px 18px;
+       font-size:16px;color:var(--ink);margin-bottom:10px;cursor:pointer;font-family:var(--sans)}
+  .menuRow span{color:var(--sub);font-size:18px}
+  .menuRow:hover{background:var(--ink);color:#fff}
+  .menuRow:hover span{color:#fff}
+  @media (prefers-reduced-motion:reduce){*{transition:none!important;animation:none!important}}
+</style>
+</head>
+<body>
+<div class="wrap">
+  <!-- header -->
+  <div style="display:flex;justify-content:space-between;align-items:baseline;margin-bottom:22px">
+    <div>
+      <div class="eyebrow">Ledger</div>
+      <div style="display:flex;align-items:center;gap:10px;margin-top:7px">
+        <button class="nav" id="prevM" aria-label="Previous month">‹</button>
+        <div class="month" id="monthLabel"></div>
+        <button class="nav" id="nextM" aria-label="Next month">›</button>
+      </div>
+    </div>
+  </div>
+
+  <!-- hero -->
+  <div class="card hero" style="padding:24px 26px;margin-bottom:16px">
+    <div class="eyebrow">Net this month</div>
+    <div class="net" id="net" style="margin-top:10px"></div>
+    <div class="flow">
+      <span class="flow-k">In</span>
+      <div class="flow-t"><div class="flow-b" id="inBar" style="background:var(--income)"></div></div>
+      <span class="flow-v" id="totIn"></span>
+      <span class="flow-k">Out</span>
+      <div class="flow-t"><div class="flow-b" id="outBar" style="background:var(--spendBright)"></div></div>
+      <span class="flow-v" id="totOut"></span>
+    </div>
+  </div>
+
+  <!-- add -->
+  <div class="card" style="padding:14px;margin-bottom:16px">
+    <div class="seg" id="modeSeg" style="margin-bottom:10px">
+      <button id="modeOut" type="button" class="on-out">Spending</button>
+      <button id="modeIn" type="button">Income</button>
+    </div>
+    <div style="display:flex;flex-wrap:wrap;gap:8px">
+      <div style="position:relative;flex:1 1 130px">
+        <span id="symPre" style="position:absolute;left:12px;top:11px;color:var(--sub)">$</span>
+        <input id="amount" class="tnum" inputmode="decimal" placeholder="0.00" style="padding-left:26px;width:100%" />
+      </div>
+      <input id="payee" list="payees" placeholder="Payee" style="flex:1 1 165px" />
+      <datalist id="payees"></datalist>
+      <select id="cat" style="flex:1 1 150px"></select>
+      <select id="acct" style="flex:1 1 140px"></select>
+      <input id="date" type="date" style="flex:1 1 140px" />
+      <input id="note" placeholder="Note (optional)" style="flex:2 1 160px" />
+      <button class="addbtn" id="add">Add</button>
+    </div>
+    <div id="loanPayRow" class="hide" style="display:flex;align-items:center;gap:8px;margin-top:10px;flex-wrap:wrap">
+      <span style="font-size:13px;color:var(--sub)">Pays down</span>
+      <select id="txnLoan" style="flex:1 1 180px">
+        <option value="">— nothing —</option>
+      </select>
+    </div>
+  </div>
+
+  <!-- columns -->
+  <div style="display:flex;flex-wrap:wrap;gap:16px">
+    <div style="flex:1 1 340px;min-width:300px">
+      <div class="sec">Transactions</div>
+      <div class="card" id="txnList" style="overflow:hidden"></div>
+    </div>
+    <div style="flex:1 1 260px;min-width:240px">
+      <div class="sec">Where it went</div>
+      <div class="card" id="breakdown" style="padding:14px"></div>
+    </div>
+  </div>
+
+  <!-- by account -->
+  <div id="acctWrap" style="margin-top:16px">
+    <div class="sec">By account · this month</div>
+    <div class="card" id="acctSummary" style="padding:14px"></div>
+  </div>
+
+  <!-- loan balances -->
+  <div id="debtWrap" class="hide" style="margin-top:16px">
+    <div class="sec">Loans &middot; remaining balance</div>
+    <div class="card" id="debtSummary" style="padding:14px"></div>
+  </div>
+
+  <!-- loans (installments, keyed off category end dates) -->
+  <div id="loanWrap" class="hide" style="margin-top:16px">
+    <div class="sec">Loans &amp; installments</div>
+    <div class="card" id="loanSummary" style="padding:14px"></div>
+  </div>
+
+  <!-- lent out -->
+  <div id="lendWrap" class="hide" style="margin-top:16px">
+    <div class="sec">Owed to you</div>
+    <div class="card" id="lendSummary" style="padding:14px"></div>
+  </div>
+
+  <!-- tools -->
+  <div style="display:flex;flex-wrap:wrap;gap:8px;margin-top:20px;align-items:center">
+    <button class="ghost" id="exp">Export CSV</button>
+    <button class="ghost" id="imp">Import CSV</button>
+    <input id="file" type="file" accept=".csv" class="hide" />
+    <button class="ghost" id="backup" style="border-color:var(--income);color:var(--income)">Full Backup</button>
+    <button class="ghost" id="restore">Restore Backup</button>
+    <input id="backupFile" type="file" accept=".json" class="hide" />
+    <div style="flex:1"></div>
+    <span class="eyebrow">Currency</span>
+    <input id="sym" style="width:52px;text-align:center;padding:8px 6px" maxlength="3" />
+  </div>
+  <div style="font-size:13px;color:var(--sub);margin-top:14px;line-height:1.55;max-width:56ch">
+    Saved in this browser, tied to this exact file — a new download starts empty, since browsers store local-file data per file, not per app. Use <b>Full Backup</b> before switching files, browsers, or devices, and <b>Restore Backup</b> in the new one to bring everything back exactly. Export CSV is a lighter, transactions-only copy for spreadsheets.
+  </div>
+</div>
+
+<!-- single entry point: floating button, reachable one-thumb, scrolls with viewport -->
+<button id="manageFab" style="position:fixed;right:18px;bottom:18px;z-index:20;border-radius:999px;
+  padding:14px 22px;box-shadow:0 6px 18px rgba(11,11,12,.28);background:var(--ink);color:#fff;
+  border:1.5px solid var(--ink);font-family:var(--mono);font-size:12px;letter-spacing:.1em;
+  text-transform:uppercase;cursor:pointer">Manage</button>
+
+<!-- full-screen overlay: a menu screen, or one of five section editors -->
+<div id="manageBg" class="drawer-bg hide" style="align-items:stretch;justify-content:stretch">
+  <div style="width:100%;height:100%;background:var(--wash);display:flex;flex-direction:column">
+    <div style="display:flex;align-items:center;gap:10px;padding:14px 16px;border-bottom:1.5px solid var(--line);background:var(--card);flex:0 0 auto">
+      <button class="nav hide" id="manageBack" aria-label="Back">‹</button>
+      <div class="display" id="manageTitle" style="font-size:19px;flex:1">Manage</div>
+      <button class="ghost" id="manageDone">Done</button>
+    </div>
+    <div style="flex:1 1 auto;overflow-y:auto;padding:18px">
+      <div style="max-width:640px;margin:0 auto">
+
+        <!-- menu -->
+        <div id="manageMenu">
+          <button class="menuRow" data-sec="loans">Loans<span>›</span></button>
+          <button class="menuRow" data-sec="lend">Owed to you<span>›</span></button>
+          <button class="menuRow" data-sec="rec">Recurring income &amp; bills<span>›</span></button>
+          <button class="menuRow" data-sec="accts">Accounts<span>›</span></button>
+          <button class="menuRow" data-sec="cats">Categories<span>›</span></button>
+        </div>
+
+        <!-- sections -->
+        <div id="manageSections" class="hide">
+          <div id="secLoans" class="hide">
+            <div style="font-size:13px;color:var(--sub);margin-bottom:16px;line-height:1.55">
+              Track a debt you're paying down. Enter the starting balance here, then open Recurring and mark which bills pay it &mdash; those payments subtract from the balance automatically. Single transactions can also be tagged to a loan right when you add or edit them.
+            </div>
+            <div id="debtEdit"></div>
+          </div>
+          <div id="secLend" class="hide">
+            <div style="font-size:13px;color:var(--sub);margin-bottom:16px;line-height:1.55">
+              Money you've lent to people. Track how much they've paid back — the outstanding balance updates automatically. Separate from your budget totals; this doesn't count as spending.
+            </div>
+            <div id="lendEdit"></div>
+          </div>
+          <div id="secRec" class="hide">
+            <div style="font-size:13px;color:var(--sub);margin-bottom:16px;line-height:1.55">
+              Income and bills that repeat every month. Each is added automatically — including any months since you last opened this. Set a day of month for precision, and for income, choose whether it's paid within the month or at the start of the next (for payroll that runs in arrears). Recurring income deposits to your checking account.
+            </div>
+            <div id="recEdit"></div>
+          </div>
+          <div id="secAccts" class="hide">
+            <div style="font-size:13px;color:var(--sub);margin-bottom:16px;line-height:1.55">
+              Where a charge lands — a bank account or a credit card. Set one per transaction so you can see what's on each card.
+            </div>
+            <div id="acctEdit"></div>
+          </div>
+          <div id="secCats" class="hide">
+            <div id="catEdit"></div>
+          </div>
+        </div>
+
+      </div>
+    </div>
+  </div>
+</div>
+
+<script>
+(function(){
+  "use strict";
+  var KEY="budget:v1";
+  var DEFAULT_CATS=[
+    {id:"salary",name:"Salary",type:"in"},
+    {id:"freelance",name:"Freelance",type:"in"},
+    {id:"other-in",name:"Other income",type:"in"},
+    {id:"housing",name:"Rent / Housing",type:"out"},
+    {id:"groceries",name:"Groceries",type:"out"},
+    {id:"dining",name:"Dining out",type:"out"},
+    {id:"transport",name:"Transport",type:"out"},
+    {id:"utilities",name:"Utilities",type:"out"},
+    {id:"subs",name:"Subscriptions",type:"out"},
+    {id:"shopping",name:"Shopping",type:"out"},
+    {id:"health",name:"Health",type:"out"},
+    {id:"fun",name:"Entertainment",type:"out"},
+    {id:"loan",name:"Loan",type:"out"},
+    {id:"other-out",name:"Other spend",type:"out"}
+  ];
+  var DEFAULT_ACCTS=[
+    {id:"checking",name:"Checking",kind:"bank"},
+    {id:"usbank",name:"US Bank",kind:"card"},
+    {id:"amex",name:"AMEX",kind:"card"},
+    {id:"applecard",name:"Apple Card",kind:"card"},
+    {id:"capitalone",name:"Capital One",kind:"card"}
+  ];
+  var uid=function(){return Math.random().toString(36).slice(2,9)};
+  var todayISO=function(){var d=new Date();return d.getFullYear()+"-"+String(d.getMonth()+1).padStart(2,"0")+"-"+String(d.getDate()).padStart(2,"0")};
+  var monthOf=function(iso){return (iso||todayISO()).slice(0,7)};
+  var monthLabel=function(ym){ym=ym||monthOf(todayISO());var p=ym.split("-");return new Date(+p[0],+p[1]-1,1).toLocaleString(undefined,{month:"long",year:"numeric"})};
+  var monthsBetween=function(fromYM,toYM){fromYM=fromYM||monthOf(todayISO());toYM=toYM||monthOf(todayISO());var f=fromYM.split("-"),t=toYM.split("-");return (+t[0]-+f[0])*12+(+t[1]-+f[1]);};
+  var monthAfter=function(ym){ym=ym||monthOf(todayISO());var p=ym.split("-");var m=+p[1]+1,y=+p[0];if(m>12){m=1;y++;}return y+"-"+String(m).padStart(2,"0");};
+  var monthBefore=function(ym){ym=ym||monthOf(todayISO());var p=ym.split("-");var m=+p[1]-1,y=+p[0];if(m<1){m=12;y--;}return y+"-"+String(m).padStart(2,"0");};
+  var daysInMonth=function(ym){var p=ym.split("-");return new Date(+p[0],+p[1],0).getDate();};
+
+  // ---- state ----
+  var cats=DEFAULT_CATS.slice(), accts=DEFAULT_ACCTS.slice(), recurring=[], lends=[], loans=[], txns=[], symbol="$", month=monthOf(todayISO());
+  try{
+    var raw=localStorage.getItem(KEY);
+    if(raw){var d=JSON.parse(raw); if(d.cats)cats=d.cats; if(d.accts)accts=d.accts; if(d.recurring)recurring=d.recurring; if(d.lends)lends=d.lends; if(d.loans)loans=d.loans; if(d.txns)txns=d.txns; if(d.symbol)symbol=d.symbol;}
+  }catch(e){}
+
+  // Payee became a required field. Older recurring bills stored what is really
+  // a payee in their label, and their generated entries carried it as a note.
+  (function migratePayee(){
+    var moved=false;
+    recurring.forEach(function(rt){
+      if(rt.payee===undefined){ rt.payee=rt.note||""; rt.note=""; moved=true; }
+    });
+    txns.forEach(function(t){
+      if(t.payee===undefined && t.recFrom && t.note){ t.payee=t.note; t.note=""; moved=true; }
+      // a missing/blank date crashes month math — pin it to today so it stays visible
+      if(!t.date || typeof t.date!=="string"){ t.date=todayISO(); moved=true; }
+    });
+    // loans dropped their category link in favor of tagged recurring bills
+    loans.forEach(function(ln){ if(ln.cat!==undefined){ delete ln.cat; moved=true; } });
+    // reimbursement removed entirely — any money back is now its own income entry
+    txns.forEach(function(t){ if(t.reimb!==undefined){ delete t.reimb; moved=true; } });
+    if(moved)try{localStorage.setItem(KEY,JSON.stringify({cats:cats,accts:accts,recurring:recurring,lends:lends,loans:loans,txns:txns,symbol:symbol}))}catch(e){}
+  })();
+
+  function save(){try{localStorage.setItem(KEY,JSON.stringify({cats:cats,accts:accts,recurring:recurring,lends:lends,loans:loans,txns:txns,symbol:symbol}))}catch(e){}}
+
+  function fmt(n){return symbol+Math.abs(n).toLocaleString(undefined,{minimumFractionDigits:2,maximumFractionDigits:2})}
+  function catById(id){for(var i=0;i<cats.length;i++)if(cats[i].id===id)return cats[i];return null}
+  function catName(id){var x=catById(id);return x?x.name:"—"}
+  function catType(id){var x=catById(id);return x?x.type:"out"}
+  function acctById(id){for(var i=0;i<accts.length;i++)if(accts[i].id===id)return accts[i];return null}
+  // a loan is paid down by recurring bills tagged to it. Sum every generated
+  // transaction whose source bill points at this loan (all months, all-time).
+  // a payment counts toward a loan if it came from a recurring bill tagged to
+  // that loan, OR if the transaction itself was tagged directly (a one-off
+  // extra payment, for example).
+  function paysLoan(t, loanId, billIds){
+    if(t.loan===loanId) return true;
+    if(t.recFrom && billIds[t.recFrom]) return true;
+    return false;
+  }
+  function paidToLoan(loanId){
+    var billIds={}; recurring.forEach(function(rt){ if(rt.loan===loanId) billIds[rt.id]=1; });
+    var s=0; txns.forEach(function(t){ if(paysLoan(t,loanId,billIds)) s+=effAmt(t); });
+    return s;
+  }
+  // actual tagged payments for a loan, bucketed by the month they landed in
+  function loanPaymentsByMonth(loanId){
+    var billIds={}; recurring.forEach(function(rt){ if(rt.loan===loanId) billIds[rt.id]=1; });
+    var by={}; txns.forEach(function(t){
+      if(paysLoan(t,loanId,billIds)){ var m=monthOf(t.date); by[m]=(by[m]||0)+effAmt(t); }
+    });
+    return by;
+  }
+  // combined monthly payment the tagged recurring bills will make going forward.
+  // if none are tagged, fall back to the user's typed expected payment so a
+  // brand-new loan can still show a projected payoff.
+  function loanMonthlyPayment(loanId){
+    var s=0; recurring.forEach(function(rt){ if(rt.loan===loanId && rt.amount>0) s+=rt.amount; });
+    if(s>0) return s;
+    var ln=null; for(var i=0;i<loans.length;i++)if(loans[i].id===loanId){ln=loans[i];break;}
+    return (ln && ln.estPay>0) ? ln.estPay : 0;
+  }
+  // walk the balance forward month by month up to the current month, returning
+  // today's true outstanding balance. Two accrual methods:
+  //   simple   — interest is charged on principal only. Each payment covers that
+  //              month's interest first, remainder cuts principal; any unpaid
+  //              interest is carried as a flat arrears bucket that does NOT itself
+  //              earn interest. This is how mortgages, auto, personal, and most
+  //              student loans work while in good standing.
+  //   compound — unpaid interest capitalizes into the balance and thereafter
+  //              earns interest (credit-card style; some private student loans).
+  function loanBalanceNow(ln){
+    var principal=ln.start||0;
+    if(principal<=0) return 0;
+    var mRate=(ln.apr>0)?(ln.apr/100/12):0;
+    var open=ln.opened || monthOf(todayISO());
+    var cur=monthOf(todayISO());
+    var byMonth=loanPaymentsByMonth(ln.id);
+    var compound=(ln.method==="compound");
+    var arrears=0;                     // unpaid interest held aside (simple only)
+    // opening-month payment applies before any interest accrues
+    principal=principal-(byMonth[open]||0); if(principal<0)principal=0;
+    var m=monthAfter(open), guard=0;
+    while(m<=cur && guard<1200){
+      guard++;
+      var interest=(principal+ (compound?0:0))*mRate;   // interest on principal
+      var pay=byMonth[m]||0;
+      if(compound){
+        // interest capitalizes, then payment reduces the whole balance
+        principal=principal+interest-pay;
+        if(principal<0)principal=0;
+      }else{
+        // payment covers arrears, then this month's interest, then principal
+        var owedInterest=arrears+interest;
+        if(pay>=owedInterest){
+          principal=principal-(pay-owedInterest); arrears=0;
+        }else{
+          arrears=owedInterest-pay;
+        }
+        if(principal<0)principal=0;
+      }
+      m=monthAfter(m);
+    }
+    return principal + (compound?0:arrears);
+  }
+  // project from today's balance forward at the scheduled payment.
+  function loanPayoff(ln){
+    var bal=loanBalanceNow(ln);
+    if(bal<=0) return {months:0, payoffYM:null, done:true};
+    var pay=loanMonthlyPayment(ln.id);
+    var mRate=(ln.apr>0)?(ln.apr/100/12):0;
+    if(pay<=0) return {noPayment:true};
+    if(pay<=bal*mRate) return {underwater:true};   // payment can't even cover interest
+    // both methods behave identically once payment > monthly interest, since
+    // there's no unpaid interest left to treat differently
+    var m=monthOf(todayISO()), n=0, guard=0;
+    while(bal>0 && guard<1200){
+      guard++; n++;
+      bal=bal+bal*mRate-pay;
+      if(bal<=0) break;
+      m=monthAfter(m);
+    }
+    return {months:n, payoffYM:m};
+  }
+  // legacy name kept for the drawer readout; now interest-aware
+  function loanRemaining(ln){return loanBalanceNow(ln);}
+  // reference-only: how long the loan SHOULD take, amortizing the original
+  // financed amount (not today's balance) at the current payment and rate.
+  // Lets you compare "on track" against the live projection from today's balance.
+  function loanStandardTerm(ln){
+    var principal=ln.financed>0?ln.financed:0;
+    if(principal<=0) return null;
+    var pay=loanMonthlyPayment(ln.id);
+    var mRate=(ln.apr>0)?(ln.apr/100/12):0;
+    if(pay<=0) return {noPayment:true};
+    if(pay<=principal*mRate) return {underwater:true};
+    var bal=principal, n=0, guard=0;
+    while(bal>0 && guard<1200){ guard++; n++; bal=bal+bal*mRate-pay; if(bal<=0)break; }
+    return {months:n};
+  }
+  function acctName(id){var x=acctById(id);return x?x.name:""}
+  function loanById(id){for(var i=0;i<loans.length;i++)if(loans[i].id===id)return loans[i];return null}
+  function loanName(id){var x=loanById(id);return x?(x.name||"loan"):""}
+  // reimbursement was removed — any money back is logged as its own income entry now
+  function effAmt(t){return t.amount}
+  // a lent-out entry may be split among people; totals roll up from them
+  function lendTotals(ln){
+    if(ln.people && ln.people.length){
+      var a=0,r=0; ln.people.forEach(function(p){a+=(p.owed||0); r+=(p.repaid||0);});
+      return {amount:a, repaid:r, outstanding:Math.max(0,a-r)};
+    }
+    var a2=ln.amount||0, r2=ln.repaid||0;
+    return {amount:a2, repaid:r2, outstanding:Math.max(0,a2-r2)};
+  }
+
+  var $=function(id){return document.getElementById(id)};
+  var editTxn=null;         // id of the row currently open in the full editor
+  var txnsExpanded=false;   // show full month vs first COLLAPSED_N rows
+  var COLLAPSED_N=6;
+
+  // recurring items still active as of a given month — used to preview what
+  // will carry forward when browsing into the current/future month before
+  // anything has actually posted there yet. Backward navigation into past
+  // months never reaches this (see the >= today guard where it's used).
+  function forecastForMonth(ym){
+    return recurring.filter(function(rt){
+      if(!(rt.amount>0)||!rt.cat||!(rt.payee&&rt.payee.trim()))return false;
+      var anchor = rt.through?monthAfter(rt.through):rt.start;
+      if(!anchor || ym<anchor) return false;
+      var cc=catById(rt.cat);
+      if(cc && cc.end && cc.end < (ym+"-01")) return false;
+      return true;
+    });
+  }
+
+  function render(){
+    // month
+    $("monthLabel").textContent=monthLabel(month);
+    // month txns
+    var mt=txns.filter(function(t){return monthOf(t.date)===month})
+               .sort(function(a,b){return a.date<b.date?1:-1});
+    // totals
+    var inc=0,out=0;
+    mt.forEach(function(t){ if(catType(t.cat)==="in") inc+=t.amount; else out+=effAmt(t); });
+    var net=inc-out;
+    var netEl=$("net");
+    netEl.textContent=(net<0?"−":"")+fmt(net);
+    netEl.style.color=net<0?"var(--spendBright)":"#FFFFFF";
+    $("totIn").textContent=fmt(inc);
+    $("totOut").textContent=fmt(out);
+    // both bars share one scale, so their lengths are directly comparable
+    var scale=Math.max(inc,out,1);
+    $("inBar").style.width=(inc/scale*100)+"%";
+    $("outBar").style.width=(out/scale*100)+"%";
+
+    // transactions
+    var list=$("txnList"); list.innerHTML="";
+    if(mt.length===0){
+      var e=document.createElement("div");
+      e.style.cssText="padding:24px;color:var(--sub);font-size:15px";
+      e.textContent="Nothing logged for "+monthLabel(month)+". Add your first entry above.";
+      list.appendChild(e);
+      // forward-looking preview only — never shown when paging back into past
+      // months, since there's nothing to forecast about history
+      if(month>=monthOf(todayISO())){
+        var fc=forecastForMonth(month);
+        if(fc.length){
+          var fWrap=document.createElement("div");
+          fWrap.style.cssText="padding:0 24px 20px;border-top:1px solid var(--hair);padding-top:16px";
+          var fLab=document.createElement("div");
+          fLab.className="eyebrow"; fLab.style.marginBottom="8px";
+          fLab.textContent="Carries in automatically";
+          fWrap.appendChild(fLab);
+          fc.forEach(function(rt){
+            var isInc=catType(rt.cat)==="in";
+            var line=document.createElement("div");
+            line.style.cssText="display:flex;justify-content:space-between;font-size:13px;padding:4px 0";
+            var lname=document.createElement("span"); lname.style.color="var(--sub)";
+            lname.textContent=(rt.payee||"—")+" · "+catName(rt.cat);
+            var lamt=document.createElement("span"); lamt.className="tnum";
+            lamt.style.color=isInc?"var(--income)":"var(--ink)";
+            lamt.textContent=(isInc?"+":"−")+fmt(rt.amount);
+            line.appendChild(lname); line.appendChild(lamt); fWrap.appendChild(line);
+          });
+          list.appendChild(fWrap);
+        }
+      }
+    }
+    var collapsed = !txnsExpanded && mt.length>COLLAPSED_N;
+    var shown = collapsed ? mt.slice(0,COLLAPSED_N) : mt;
+    shown.forEach(function(t){
+      var isIn=catType(t.cat)==="in";
+
+      // ---- edit mode: full inline form ----
+      if(editTxn===t.id){
+        var er=document.createElement("div"); er.className="row"; er.style.display="block";
+        var draft={amount:t.amount,payee:t.payee||"",cat:t.cat,acct:t.acct||"",date:t.date,note:t.note||"",loan:t.loan||""};
+
+        function field(label){
+          var w=document.createElement("div");
+          var l=document.createElement("div"); l.textContent=label;
+          l.style.cssText="font-size:10px;letter-spacing:.06em;text-transform:uppercase;color:var(--sub);margin-bottom:3px;font-family:var(--mono)";
+          w.appendChild(l); return w;
+        }
+
+        // row 1: amount + date
+        var g1=document.createElement("div"); g1.style.cssText="display:flex;gap:8px;margin-bottom:8px";
+        var fa=field("Amount"); var awrap=document.createElement("div"); awrap.style.cssText="position:relative";
+        var apre=document.createElement("span"); apre.textContent=symbol; apre.style.cssText="position:absolute;left:10px;top:11px;color:var(--sub);font-size:13px";
+        var ai=document.createElement("input"); ai.type="number"; ai.min="0"; ai.step="0.01"; ai.className="tnum";
+        ai.value=draft.amount; ai.style.cssText="width:100%;padding-left:22px";
+        ai.addEventListener("input",function(){draft.amount=this.value});
+        awrap.appendChild(apre); awrap.appendChild(ai); fa.appendChild(awrap); fa.style.flex="1 1 120px";
+        var fd=field("Date"); var di=document.createElement("input"); di.type="date"; di.value=draft.date; di.style.width="100%";
+        di.addEventListener("input",function(){draft.date=this.value}); fd.appendChild(di); fd.style.flex="1 1 140px";
+        g1.appendChild(fa); g1.appendChild(fd); er.appendChild(g1);
+
+        // row 2: payee + category
+        var g2=document.createElement("div"); g2.style.cssText="display:flex;gap:8px;margin-bottom:8px";
+        var fp=field("Payee"); var pi=document.createElement("input"); pi.value=draft.payee; pi.setAttribute("list","payees"); pi.style.width="100%";
+        pi.addEventListener("input",function(){draft.payee=this.value}); fp.appendChild(pi); fp.style.flex="1 1 150px";
+        var fc=field("Category"); var ci=document.createElement("select"); ci.style.width="100%";
+        groupedCatOptions(ci,draft.cat); ci.addEventListener("change",function(){draft.cat=this.value}); fc.appendChild(ci); fc.style.flex="1 1 150px";
+        g2.appendChild(fp); g2.appendChild(fc); er.appendChild(g2);
+
+        // row 3: account + note
+        var g3=document.createElement("div"); g3.style.cssText="display:flex;gap:8px;margin-bottom:8px";
+        var fac=field("Account"); var aci=document.createElement("select"); aci.style.width="100%";
+        var ap=document.createElement("option"); ap.value=""; ap.textContent="Account…"; ap.disabled=true; if(!draft.acct)ap.selected=true; aci.appendChild(ap);
+        accts.forEach(function(a){var o=document.createElement("option");o.value=a.id;o.textContent=a.name;if(a.id===draft.acct)o.selected=true;aci.appendChild(o)});
+        aci.addEventListener("change",function(){draft.acct=this.value}); fac.appendChild(aci); fac.style.flex="1 1 140px";
+        var fn=field("Note"); var ni=document.createElement("input"); ni.value=draft.note; ni.placeholder="optional"; ni.style.width="100%";
+        ni.addEventListener("input",function(){draft.note=this.value}); fn.appendChild(ni); fn.style.flex="1 1 150px";
+        g3.appendChild(fac); g3.appendChild(fn); er.appendChild(g3);
+
+        // row 4: pays down a loan (spends only, only when loans exist)
+        if(!isIn && loans.length){
+          var g4=field("Pays down");
+          var ls=document.createElement("select"); ls.style.width="100%";
+          var lnone=document.createElement("option"); lnone.value=""; lnone.textContent="— nothing —"; if(!draft.loan)lnone.selected=true; ls.appendChild(lnone);
+          loans.forEach(function(ln2){
+            var o=document.createElement("option"); o.value=ln2.id; o.textContent=ln2.name||"(unnamed loan)";
+            if(ln2.id===draft.loan)o.selected=true; ls.appendChild(o);
+          });
+          ls.addEventListener("change",function(){draft.loan=this.value});
+          g4.appendChild(ls); g4.style.marginBottom="10px"; er.appendChild(g4);
+        }
+
+        // recurring detach warning
+        if(t.recFrom){
+          var wn=document.createElement("div");
+          wn.textContent="This came from a recurring bill. Saving edits here unlinks just this entry — the bill keeps posting as before.";
+          wn.style.cssText="font-size:12px;color:var(--sub);margin-bottom:10px;line-height:1.45";
+          er.appendChild(wn);
+        }
+
+        // actions
+        var acts=document.createElement("div"); acts.style.cssText="display:flex;gap:8px;align-items:center";
+        var saveB=document.createElement("button"); saveB.className="addbtn"; saveB.textContent="Save"; saveB.style.padding="9px 18px";
+        saveB.onclick=function(){
+          var a=parseFloat(draft.amount);
+          if(!(a>0)){ ai.style.borderColor="var(--spend)"; ai.focus(); return; }
+          if(!draft.payee.trim()){ pi.style.borderColor="var(--spend)"; pi.focus(); return; }
+          if(!draft.acct){ aci.style.borderColor="var(--spend)"; aci.focus(); return; }
+          t.amount=a; t.payee=draft.payee.trim(); t.cat=draft.cat; t.acct=draft.acct; t.date=draft.date||t.date; t.note=draft.note.trim();
+          t.loan=(catType(t.cat)==="out"&&draft.loan)?draft.loan:undefined;
+          if(t.recFrom)delete t.recFrom;   // this entry is now hand-edited, keep it that way
+          editTxn=null;
+          if(monthOf(t.date)!==month)month=monthOf(t.date);
+          save(); fillPayees(); render();
+        };
+        var cancelB=document.createElement("button"); cancelB.className="ghost"; cancelB.textContent="Cancel";
+        cancelB.onclick=function(){ editTxn=null; render(); };
+        var delB=document.createElement("button"); delB.className="ghost"; delB.textContent="Delete";
+        delB.style.marginLeft="auto"; delB.style.color="var(--spend)"; delB.style.borderColor="var(--spend)";
+        delB.onclick=function(){ txns=txns.filter(function(x){return x.id!==t.id}); editTxn=null; save(); render(); };
+        acts.appendChild(saveB); acts.appendChild(cancelB); acts.appendChild(delB);
+        er.appendChild(acts);
+        list.appendChild(er);
+        return;
+      }
+
+      // ---- display row ----
+      var row=document.createElement("div"); row.className="row";
+      var left=document.createElement("div"); left.style.cssText="flex:1;min-width:0";
+      var nm=document.createElement("div"); nm.style.fontSize="16px";
+      nm.textContent=t.payee||catName(t.cat);
+      var meta=document.createElement("div"); meta.className="tnum"; meta.style.cssText="font-size:13px;color:var(--sub)";
+      var an=acctName(t.acct);
+      var loanNote=(!isIn&&t.loan)?(" · → "+loanName(t.loan)):"";
+      var bits=[t.recFrom?"Monthly":t.date.slice(5)];
+      if(t.payee)bits.push(catName(t.cat));   // otherwise the title already says it
+      if(an)bits.push(an);
+      if(t.note)bits.push(t.note);
+      meta.textContent=bits.join(" · ")+loanNote;
+      left.appendChild(nm); left.appendChild(meta);
+      var amt=document.createElement("div"); amt.className="tnum";
+      amt.style.cssText="font-size:16px;white-space:nowrap;color:"+(isIn?"var(--income)":"var(--ink)");
+      amt.textContent=(isIn?"+":"−")+fmt(effAmt(t));
+      var eb=document.createElement("button"); eb.className="del"; eb.textContent="✎"; eb.title="Edit";
+      eb.style.fontSize="15px";
+      eb.onclick=function(){ editTxn=t.id; render(); };
+      var db=document.createElement("button"); db.className="del"; db.textContent="×"; db.title="Delete";
+      db.onclick=function(){ txns=txns.filter(function(x){return x.id!==t.id}); save(); render(); };
+      row.appendChild(left); row.appendChild(amt); row.appendChild(eb); row.appendChild(db);
+      list.appendChild(row);
+    });
+    // expand / collapse footer — only when the month overflows the cap
+    if(mt.length>COLLAPSED_N){
+      var foot=document.createElement("button");
+      foot.style.cssText="width:100%;border:none;border-top:1px solid var(--hair);background:transparent;"+
+        "padding:12px;font-family:var(--mono);font-size:11px;letter-spacing:.1em;text-transform:uppercase;"+
+        "color:var(--sub);cursor:pointer";
+      foot.textContent = collapsed ? ("Show "+(mt.length-COLLAPSED_N)+" more") : "Show less";
+      foot.onmouseover=function(){this.style.color="var(--ink)"};
+      foot.onmouseout=function(){this.style.color="var(--sub)"};
+      foot.onclick=function(){ txnsExpanded=!txnsExpanded; render(); };
+      list.appendChild(foot);
+    }
+
+    // breakdown
+    var m={};
+    mt.forEach(function(t){ if(catType(t.cat)==="out") m[t.cat]=(m[t.cat]||0)+effAmt(t); });
+    var arr=Object.keys(m).map(function(k){return [k,m[k]]}).sort(function(a,b){return b[1]-a[1]});
+    var bd=$("breakdown"); bd.innerHTML="";
+    if(arr.length===0){var z=document.createElement("div");z.style.cssText="color:var(--sub);font-size:15px";z.textContent="No spending yet.";bd.appendChild(z);}
+    var max=arr.length?arr[0][1]:1;
+    arr.forEach(function(p){
+      var w=document.createElement("div"); w.style.marginBottom="12px";
+      var head=document.createElement("div"); head.style.cssText="display:flex;justify-content:space-between;font-size:15px;margin-bottom:5px";
+      var l=document.createElement("span"); l.textContent=catName(p[0]);
+      var r=document.createElement("span"); r.className="tnum"; r.style.color="var(--sub)"; r.textContent=fmt(p[1]);
+      head.appendChild(l); head.appendChild(r);
+      var bg=document.createElement("div"); bg.className="barbg";
+      var bar=document.createElement("div"); bar.className="bar"; bar.style.width=((p[1]/max)*100)+"%";
+      bg.appendChild(bar); w.appendChild(head); w.appendChild(bg); bd.appendChild(w);
+    });
+
+    // by account
+    var am={};
+    mt.forEach(function(t){
+      var k=t.acct||"__none";
+      if(!am[k])am[k]={inc:0,out:0};
+      if(catType(t.cat)==="in")am[k].inc+=t.amount; else am[k].out+=effAmt(t);
+    });
+    var as=$("acctSummary"); as.innerHTML="";
+    var akeys=Object.keys(am);
+    if(akeys.length===0){var zz=document.createElement("div");zz.style.cssText="color:var(--sub);font-size:15px";zz.textContent="Nothing logged this month.";as.appendChild(zz);}
+    // stable order: accounts as defined, then unassigned
+    var order=accts.map(function(a){return a.id}).filter(function(id){return am[id]}).concat(am["__none"]?["__none"]:[]);
+    order.forEach(function(k,i){
+      var a=am[k]; var acc=acctById(k);
+      var isCard=acc&&acc.kind==="card";
+      var row=document.createElement("div");
+      row.style.cssText="display:flex;align-items:center;gap:10px;padding:9px 0"+(i?";border-top:1px solid var(--line)":"");
+      var badge=document.createElement("span");
+      badge.textContent=k==="__none"?"—":(isCard?"CARD":"BANK");
+      badge.style.cssText="font-family:var(--mono);font-size:10px;letter-spacing:1px;color:var(--sub);border:1px solid var(--hair);border-radius:4px;padding:3px 6px;min-width:46px;text-align:center";
+      var name=document.createElement("div"); name.style.cssText="flex:1;font-size:15px";
+      name.textContent=k==="__none"?"Unassigned":acc.name;
+      var right=document.createElement("div"); right.className="tnum"; right.style.cssText="font-size:14px;text-align:right;white-space:nowrap";
+      if(isCard){
+        // for a card, what you owe this month = charges minus payments/refunds to it
+        right.innerHTML='<span style="color:var(--spend)">'+fmt(a.out)+'</span> charged';
+      }else{
+        var net=a.inc-a.out;
+        right.innerHTML='<span style="color:'+(net<0?"var(--spend)":"var(--income)")+'">'+(net<0?"−":"+")+fmt(net)+'</span> net';
+      }
+      row.appendChild(badge); row.appendChild(name); row.appendChild(right); as.appendChild(row);
+    });
+
+    // loan balances (starting balance minus payments logged to its category)
+    var dw=$("debtWrap"), dsum=$("debtSummary");
+    if(loans.length===0){ dw.classList.add("hide"); }
+    else{
+      dw.classList.remove("hide"); dsum.innerHTML="";
+      var debtTotal=0;
+      loans.forEach(function(ln,i){
+        var start=ln.start||0, paid=paidToLoan(ln.id), rem=loanBalanceNow(ln);
+        debtTotal+=rem;
+        var pct=start>0?Math.min(100,Math.round((start-rem)/start*100)):0;
+        var done=rem<=0 && start>0;
+        var block=document.createElement("div");
+        block.style.cssText="padding:12px 0"+(i?";border-top:1px solid var(--hair)":"");
+        var top=document.createElement("div"); top.style.cssText="display:flex;align-items:baseline;gap:10px";
+        var L=document.createElement("div"); L.style.cssText="flex:1;min-width:0";
+        var nm=document.createElement("div"); nm.style.fontSize="16px";
+        nm.textContent=(ln.name||"Loan")+(done?" · paid off":"");
+        if(done)nm.style.color="var(--income)";
+        var sub=document.createElement("div"); sub.style.cssText="font-size:13px;color:var(--sub)";
+        var nbills=recurring.filter(function(rt){return rt.loan===ln.id}).length;
+        var nOneOff=txns.filter(function(t){return t.loan===ln.id}).length;
+        var rateBit=(ln.apr>0)?(ln.apr+"% APR · "):"";
+        var srcBits=[];
+        if(nbills)srcBits.push(nbills+" recurring payment"+(nbills>1?"s":""));
+        if(nOneOff)srcBits.push(nOneOff+" one-off payment"+(nOneOff>1?"s":""));
+        sub.textContent=rateBit+fmt(paid)+" paid so far"+(srcBits.length?(" · "+srcBits.join(", ")):" · no payments linked yet");
+        L.appendChild(nm); L.appendChild(sub);
+        var R=document.createElement("div"); R.className="tnum"; R.style.cssText="text-align:right;white-space:nowrap";
+        R.innerHTML='<div style="font-size:16px;color:'+(done?"var(--income)":"var(--ink)")+'">'+fmt(rem)+'</div><div style="font-size:12px;color:var(--sub)">remaining</div>';
+        top.appendChild(L); top.appendChild(R); block.appendChild(top);
+        var bg=document.createElement("div"); bg.style.cssText="height:9px;background:var(--incomeSoft);border-radius:2px;overflow:hidden;margin-top:8px";
+        var bar=document.createElement("div"); bar.style.cssText="height:100%;width:"+pct+"%;background:var(--income);border-radius:2px";
+        bg.appendChild(bar); block.appendChild(bg);
+        // payoff projection
+        if(!done){
+          var po=loanPayoff(ln);
+          var pe=document.createElement("div"); pe.style.cssText="font-size:12px;margin-top:7px;font-family:var(--mono)";
+          if(po.noPayment){ pe.style.color="var(--sub)"; pe.textContent="Set an expected monthly payment to project a payoff date."; }
+          else if(po.underwater){ pe.style.color="var(--spend)"; pe.textContent="Payment doesn't cover the interest — balance won't fall at this rate."; }
+          else{
+            var yrs=Math.floor(po.months/12), mos=po.months%12;
+            var span=(yrs?yrs+"y ":"")+(mos?mos+"mo":"")||"0mo";
+            var est=!recurring.some(function(rt){return rt.loan===ln.id && rt.amount>0});
+            pe.style.color="var(--ink)";
+            pe.textContent=(est?"Est. paid off ":"Paid off ")+monthLabel(po.payoffYM)+" · "+span+" at "+fmt(loanMonthlyPayment(ln.id))+"/mo"+(est?" (estimated)":"");
+          }
+          block.appendChild(pe);
+          // standard term: how long the loan should take from its original
+          // financed amount, as a reference to compare against the live projection above
+          if(ln.financed>0){
+            var st=loanStandardTerm(ln);
+            var se=document.createElement("div"); se.style.cssText="font-size:12px;margin-top:3px;color:var(--sub);font-family:var(--mono)";
+            if(st===null){ /* no financed amount — shouldn't happen inside this branch */ }
+            else if(st.noPayment){ se.textContent="Standard term: set a payment to calculate."; }
+            else if(st.underwater){ se.textContent="Standard term: payment can't amortize the original amount."; }
+            else{
+              var syrs=Math.floor(st.months/12), smos=st.months%12;
+              var sspan=(syrs?syrs+"y ":"")+(smos?smos+"mo":"")||"0mo";
+              se.textContent="Standard term from financed amount: "+sspan;
+            }
+            block.appendChild(se);
+          }
+        }
+        dsum.appendChild(block);
+      });
+      var dt=document.createElement("div");
+      dt.style.cssText="display:flex;justify-content:space-between;margin-top:14px;padding-top:12px;border-top:1.5px solid var(--line);font-size:15px";
+      dt.innerHTML='<span style="color:var(--sub)">Total remaining</span><span class="tnum" style="font-weight:700">'+fmt(debtTotal)+'</span>';
+      dsum.appendChild(dt);
+    }
+
+    // loans & installments (categories with an end date)
+    var loanCats=cats.filter(function(x){return x.end});
+    var lw=$("loanWrap"), lsum=$("loanSummary");
+    if(loanCats.length===0){ lw.classList.add("hide"); }
+    else{
+      lw.classList.remove("hide"); lsum.innerHTML="";
+      var curM=monthOf(todayISO());
+      loanCats.sort(function(a,b){return a.end<b.end?-1:1});
+      loanCats.forEach(function(cc,i){
+        var paid=0,cnt=0;
+        txns.forEach(function(t){ if(t.cat===cc.id){ paid+=effAmt(t); cnt++; } });
+        var left=monthsBetween(curM, monthOf(cc.end));
+        var cd = left<0 ? "Ended "+cc.end
+               : left===0 ? "Ends this month"
+               : left+" month"+(left>1?"s":"")+" left";
+        var hasTotal=cc.total>0;
+        var pct=hasTotal?Math.min(100,Math.round(paid/cc.total*100)):0;
+
+        var block=document.createElement("div");
+        block.style.cssText="padding:12px 0"+(i?";border-top:1px solid var(--line)":"");
+        var top=document.createElement("div"); top.style.cssText="display:flex;align-items:baseline;gap:10px";
+        var L=document.createElement("div"); L.style.cssText="flex:1;min-width:0";
+        var nm=document.createElement("div"); nm.style.fontSize="16px"; nm.textContent=cc.name;
+        var sub=document.createElement("div"); sub.style.cssText="font-size:13px;color:"+(left<0?"var(--spend)":"var(--sub)");
+        sub.textContent=cd+" · "+cnt+" payment"+(cnt!==1?"s":"");
+        L.appendChild(nm); L.appendChild(sub);
+        var R=document.createElement("div"); R.className="tnum"; R.style.cssText="text-align:right;white-space:nowrap";
+        if(hasTotal){
+          R.innerHTML='<div style="font-size:16px">'+pct+'%</div><div style="font-size:12px;color:var(--sub)">'+fmt(paid)+' of '+fmt(cc.total)+'</div>';
+        }else{
+          R.innerHTML='<div style="font-size:16px">'+fmt(paid)+'</div><div style="font-size:12px;color:var(--sub)">paid to date</div>';
+        }
+        top.appendChild(L); top.appendChild(R); block.appendChild(top);
+        if(hasTotal){
+          var bg=document.createElement("div"); bg.style.cssText="height:7px;background:var(--incomeSoft);border-radius:2px;overflow:hidden;margin-top:8px";
+          var bar=document.createElement("div"); bar.style.cssText="height:100%;width:"+pct+"%;background:var(--income);border-radius:2px";
+          bg.appendChild(bar); block.appendChild(bg);
+        }
+        lsum.appendChild(block);
+      });
+    }
+
+    // lent out (owed to you) — independent of budget totals
+    var lendW=$("lendWrap"), lsm=$("lendSummary");
+    if(lends.length===0){ lendW.classList.add("hide"); }
+    else{
+      lendW.classList.remove("hide"); lsm.innerHTML="";
+      var totalOut=0;
+      lends.forEach(function(ln,i){
+        var tt=lendTotals(ln);
+        var repaid=tt.repaid, outst=tt.outstanding, amount=tt.amount;
+        totalOut+=outst;
+        var pct=amount>0?Math.min(100,Math.round(repaid/amount*100)):0;
+        var done=outst<=0 && amount>0;
+        var split=ln.people && ln.people.length;
+        var block=document.createElement("div");
+        block.style.cssText="padding:12px 0"+(i?";border-top:1px solid var(--line)":"");
+        var top=document.createElement("div"); top.style.cssText="display:flex;align-items:baseline;gap:10px";
+        var L=document.createElement("div"); L.style.cssText="flex:1;min-width:0";
+        var nm=document.createElement("div"); nm.style.fontSize="16px"; nm.textContent=(ln.person||"Someone")+(done?" · settled":"");
+        if(done)nm.style.color="var(--income)";
+        var sub=document.createElement("div"); sub.style.cssText="font-size:13px;color:var(--sub)";
+        sub.textContent=fmt(repaid)+" of "+fmt(amount)+" back"+(split?(" · "+ln.people.length+" people"):"")+(ln.note?(" · "+ln.note):"");
+        L.appendChild(nm); L.appendChild(sub);
+        var R=document.createElement("div"); R.className="tnum"; R.style.cssText="text-align:right;white-space:nowrap";
+        R.innerHTML='<div style="font-size:16px;color:'+(done?"var(--income)":"var(--ink)")+'">'+fmt(outst)+'</div><div style="font-size:12px;color:var(--sub)">outstanding</div>';
+        top.appendChild(L); top.appendChild(R); block.appendChild(top);
+        var bg=document.createElement("div"); bg.style.cssText="height:7px;background:var(--incomeSoft);border-radius:2px;overflow:hidden;margin-top:8px";
+        var bar=document.createElement("div"); bar.style.cssText="height:100%;width:"+pct+"%;background:var(--income);border-radius:2px";
+        bg.appendChild(bar); block.appendChild(bg);
+        // per-person breakdown
+        if(split){
+          var pw=document.createElement("div"); pw.style.cssText="margin-top:8px;padding-left:2px";
+          ln.people.forEach(function(p){
+            var po=Math.max(0,(p.owed||0)-(p.repaid||0));
+            var pr=document.createElement("div");
+            pr.style.cssText="display:flex;justify-content:space-between;font-size:13px;padding:3px 0;color:"+(po<=0&&p.owed>0?"var(--income)":"var(--sub)");
+            var pn=document.createElement("span"); pn.textContent=(p.name||"—")+(po<=0&&p.owed>0?" ✓":"");
+            var pv=document.createElement("span"); pv.className="tnum";
+            pv.textContent=fmt(po)+" left"+(p.repaid>0?(" ("+fmt(p.repaid)+" of "+fmt(p.owed||0)+")"):"");
+            pr.appendChild(pn); pr.appendChild(pv); pw.appendChild(pr);
+          });
+          block.appendChild(pw);
+        }
+        lsm.appendChild(block);
+      });
+      var tot=document.createElement("div");
+      tot.style.cssText="display:flex;justify-content:space-between;margin-top:14px;padding-top:12px;border-top:1.5px solid var(--line);font-size:15px";
+      tot.innerHTML='<span style="color:var(--sub)">Total outstanding</span><span class="tnum" style="font-weight:600">'+fmt(totalOut)+'</span>';
+      lsm.appendChild(tot);
+    }
+
+    // currency + symbol prefix
+    $("symPre").textContent=symbol;
+    if($("sym").value!==symbol)$("sym").value=symbol;
+
+    // keep the add-form's loan-payment row in sync (loans can change via the drawer)
+    if(typeof applyMode==="function")applyMode();
+  }
+
+  function fillCatSelect(){
+    var sel=$("cat"); var prev=sel.value; sel.innerHTML="";
+    var when=($("date")&&$("date").value)||todayISO();
+    var mode=(typeof addMode!=="undefined")?addMode:"out";
+    var list=cats.filter(function(x){return x.type===mode && (!x.end || x.end>=when)});
+    list.forEach(function(x){
+      var o=document.createElement("option"); o.value=x.id;
+      o.textContent=x.name+(x.end?" · ends "+x.end.slice(0,7):"");
+      sel.appendChild(o);
+    });
+    // keep the prior pick only if it still belongs to this mode
+    if(prev&&sel.querySelector('option[value="'+prev+'"]'))sel.value=prev;
+  }
+
+  // suggest payees already used, so repeat entries are a couple of keystrokes
+  function fillPayees(){
+    var seen={}, list=[];
+    txns.forEach(function(t){
+      var v=(t.payee||"").trim(); if(!v)return;
+      var k=v.toLowerCase(); if(seen[k])return;
+      seen[k]=1; list.push(v);
+    });
+    list.sort(function(a,b){return a.toLowerCase()<b.toLowerCase()?-1:1});
+    var dl=$("payees"); dl.innerHTML="";
+    list.forEach(function(v){var o=document.createElement("option");o.value=v;dl.appendChild(o)});
+  }
+
+  function fillAcctSelect(){
+    var sel=$("acct"); var prev=sel.value; sel.innerHTML="";
+    var ph=document.createElement("option"); ph.value=""; ph.textContent="Account…"; ph.disabled=true; sel.appendChild(ph);
+    accts.forEach(function(a){
+      var o=document.createElement("option"); o.value=a.id; o.textContent=a.name; sel.appendChild(o);
+    });
+    if(prev&&sel.querySelector('option[value="'+prev+'"]'))sel.value=prev; else sel.value="";
+  }
+
+  // ---- add ----
+  // flag a required field that was left empty
+  function flagMissing(el){
+    el.style.borderColor="var(--spend)";
+    setTimeout(function(){el.style.borderColor="";},1200);
+    el.focus();
+  }
+
+  // add-form mode: "out" (spending) or "in" (income)
+  var addMode="out";
+  // income lands in checking by default; fall back sanely if it's gone/renamed
+  function defaultIncomeAcct(){
+    var c=acctById("checking"); if(c)return c.id;
+    var bank=accts.filter(function(a){return a.kind==="bank"})[0];
+    return bank?bank.id:(accts[0]?accts[0].id:"");
+  }
+  function applyMode(){
+    var out=addMode==="out";
+    $("modeOut").className=out?"on-out":"";
+    $("modeIn").className=out?"":"on-in";
+    // income skips the account picker and the loan-payment row
+    $("acct").classList.toggle("hide",!out);
+    var showLoanRow = out && loans.length>0;
+    $("loanPayRow").classList.toggle("hide",!showLoanRow);
+    if(showLoanRow){
+      var sel=$("txnLoan"); var prev=sel.value; sel.innerHTML='<option value="">— nothing —</option>';
+      loans.forEach(function(ln){
+        var o=document.createElement("option"); o.value=ln.id; o.textContent=ln.name||"(unnamed loan)"; sel.appendChild(o);
+      });
+      if(prev&&sel.querySelector('option[value="'+prev+'"]'))sel.value=prev;
+    }else{ $("txnLoan").value=""; }
+    fillCatSelect();
+  }
+  $("modeOut").onclick=function(){addMode="out";applyMode()};
+  $("modeIn").onclick=function(){addMode="in";applyMode()};
+
+  function addTxn(){
+    var amt=parseFloat($("amount").value);
+    var payee=$("payee").value.trim();
+    var cat=$("cat").value;
+    var isInc=addMode==="in";
+    var acct=isInc?defaultIncomeAcct():$("acct").value;
+    var date=$("date").value||todayISO();
+    if(!amt||amt<=0||!cat)return;
+    if(!payee){ flagMissing($("payee")); return; }
+    if(!isInc && !acct){ flagMissing($("acct")); return; }
+    var loanPay = (!isInc && loans.length) ? ($("txnLoan").value||undefined) : undefined;
+    txns.unshift({id:uid(),amount:amt,payee:payee,cat:cat,acct:acct,date:date,note:$("note").value.trim(),loan:loanPay});
+    $("amount").value=""; $("payee").value=""; $("note").value="";
+    if($("txnLoan"))$("txnLoan").value="";
+    if(monthOf(date)!==month)month=monthOf(date);
+    save(); fillPayees(); render();
+  }
+
+  $("add").onclick=addTxn;
+  $("amount").addEventListener("keydown",function(e){if(e.key==="Enter")addTxn()});
+  $("payee").addEventListener("keydown",function(e){if(e.key==="Enter")addTxn()});
+  $("note").addEventListener("keydown",function(e){if(e.key==="Enter")addTxn()});
+  $("date").addEventListener("change",fillCatSelect);
+
+  // ---- month nav ----
+  $("prevM").onclick=function(){month=monthBefore(month);txnsExpanded=false;render()};
+  $("nextM").onclick=function(){month=monthAfter(month);txnsExpanded=false;render()};
+
+  // ---- currency ----
+  $("sym").addEventListener("input",function(){symbol=this.value.slice(0,3)||"$";save();render()});
+
+  // ---- CSV export ----
+  function pad(n){return String(n).padStart(2,"0")}
+  function stamp(sep){var d=new Date();
+    return d.getFullYear()+"-"+pad(d.getMonth()+1)+"-"+pad(d.getDate())+" "+
+      pad(d.getHours())+sep+pad(d.getMinutes())+sep+pad(d.getSeconds());}
+  $("exp").onclick=function(){
+    var rows=[["Budget Data","exported "+stamp(":")],[],["date","type","payee","category","account","amount","note","paysDownLoan"]];
+    txns.slice().sort(function(a,b){return a.date<b.date?1:-1}).forEach(function(t){
+      rows.push([t.date,catType(t.cat),(t.payee||""),catName(t.cat),acctName(t.acct),t.amount.toFixed(2),(t.note||""),(t.loan?loanName(t.loan):"")]);
+    });
+    if(lends.length){
+      rows.push([]); rows.push(["Lent out"]); rows.push(["person","lent","repaid","note","group"]);
+      lends.forEach(function(ln){
+        if(ln.people && ln.people.length){
+          var g=ln.person||("Loan "+ln.id.slice(0,4));
+          ln.people.forEach(function(p,idx){
+            rows.push([p.name||"",(p.owed||0).toFixed(2),(p.repaid||0).toFixed(2),(idx===0?(ln.note||""):""),g]);
+          });
+        }else{
+          rows.push([ln.person||"",(ln.amount||0).toFixed(2),(ln.repaid||0).toFixed(2),(ln.note||""),""]);
+        }
+      });
+    }
+    var csv=rows.map(function(r){return r.map(function(f){return '"'+String(f).replace(/"/g,'""')+'"'}).join(",")}).join("\n");
+    var blob=new Blob([csv],{type:"text/csv"});
+    var url=URL.createObjectURL(blob);
+    var filename="Budget Data "+stamp("-")+".csv";
+    try{
+      // must be attached to the DOM for .click() to reliably trigger a
+      // download in some sandboxed/embedded contexts (e.g. preview iframes)
+      var a=document.createElement("a"); a.href=url; a.download=filename; a.style.display="none";
+      document.body.appendChild(a); a.click(); document.body.removeChild(a);
+      setTimeout(function(){ URL.revokeObjectURL(url); }, 4000);
+    }catch(err){
+      // sandboxed preview frames often block the download attribute outright —
+      // open the CSV in a new tab instead so it can be saved manually
+      try{ window.open(url, "_blank"); }
+      catch(err2){ alert("Couldn't trigger a download in this preview. Open this file in a regular browser tab (not the chat preview) and try Export CSV again."); }
+    }
+  };
+
+  // ---- CSV import ----
+  $("imp").onclick=function(){$("file").click()};
+  $("file").addEventListener("change",function(e){
+    var f=e.target.files&&e.target.files[0]; if(!f)return;
+    var rd=new FileReader();
+    rd.onload=function(){
+      try{
+        var lines=String(rd.result).split(/\r?\n/).filter(Boolean);
+        function findOrMake(name,tp){
+          for(var i=0;i<cats.length;i++)if(cats[i].name.toLowerCase()===name.toLowerCase()&&cats[i].type===tp)return cats[i].id;
+          var nc={id:uid(),name:name,type:tp}; cats.push(nc); return nc.id;
+        }
+        function findOrMakeAcct(name){
+          if(!name)return undefined;
+          for(var i=0;i<accts.length;i++)if(accts[i].name.toLowerCase()===name.toLowerCase())return accts[i].id;
+          var kind=/card|credit|visa|amex|mastercard/i.test(name)?"card":"bank";
+          var na={id:uid(),name:name,kind:kind}; accts.push(na); return na.id;
+        }
+        var added=[], addedLends=[], lendGroups={}, section="txn", cols=null;
+        lines.forEach(function(ln){
+          var m=ln.match(/("([^"]|"")*"|[^,]*)(,|$)/g);
+          if(!m)return;
+          m=m.map(function(s){return s.replace(/,$/,"").replace(/^"|"$/g,"").replace(/""/g,'"')});
+          var c0=m[0]||"";
+          if(c0==="Budget Data")return;                 // metadata line
+          if(c0==="Lent out"){ section="lend"; return; } // section marker
+          if(c0==="date"&&m.indexOf("amount")>-1){       // txn header: map columns by name
+            cols={}; m.forEach(function(h,i){ if(h)cols[h.toLowerCase()]=i; }); return;
+          }
+          if(c0==="person"&&m[1]==="lent")return;        // lend header
+          if(section==="lend"){
+            var lent=parseFloat(m[1]); var grp=m[4]||"";
+            if(!c0 && !(lent>0))return;
+            if(grp){ // one person within a split loan
+              var g=lendGroups[grp];
+              if(!g){ g={id:uid(),person:grp,note:"",people:[]}; lendGroups[grp]=g; addedLends.push(g); }
+              if(!g.note && m[3]) g.note=m[3];
+              g.people.push({id:uid(),name:c0,owed:(lent>0?lent:0),repaid:(parseFloat(m[2])>0?parseFloat(m[2]):0)});
+            }else{
+              addedLends.push({id:uid(),person:c0,amount:(lent>0?lent:0),repaid:(parseFloat(m[2])>0?parseFloat(m[2]):0),note:m[3]||""});
+            }
+            return;
+          }
+          var d,tp,pe,cn,an,amtStr,no,loanStr;
+          if(cols){
+            var g=function(k){return (cols[k]!==undefined?m[cols[k]]:"")||""};
+            d=g("date"); tp=g("type"); pe=g("payee"); cn=g("category");
+            an=g("account"); amtStr=g("amount"); no=g("note"); loanStr=g("paysdownloan");
+          }else{
+            // headerless file: fall back to guessing by position
+            d=c0; tp=m[1]; pe=""; cn=m[2]; loanStr="";
+            if(m.length>=6 && !isNaN(parseFloat(m[4]))){ an=m[3]; amtStr=m[4]; no=m[5]||""; }
+            else { an=""; amtStr=m[3]; no=m[4]||""; }
+          }
+          var a=parseFloat(amtStr); if(!d||!a)return;
+          // best-effort: match the exported loan name back to a loan you still have
+          var loanId;
+          if(loanStr){
+            var hit=loans.filter(function(x){return (x.name||"").toLowerCase()===loanStr.toLowerCase()})[0];
+            if(hit)loanId=hit.id;
+          }
+          added.push({id:uid(),date:d,amount:a,payee:pe,cat:findOrMake(cn||"Imported",tp==="in"?"in":"out"),acct:findOrMakeAcct(an),note:no,loan:loanId});
+        });
+        // Count-based dedupe. Keep as many copies of a signature as the file
+        // has *beyond* what's already stored — so re-importing the same export
+        // adds nothing, but two genuinely identical coffees still both land.
+        function keepNew(incoming, existing, sig){
+          var have={};
+          existing.forEach(function(x){var k=sig(x); have[k]=(have[k]||0)+1;});
+          return incoming.filter(function(x){
+            var k=sig(x);
+            if(have[k]>0){have[k]--;return false;}
+            return true;
+          });
+        }
+        var tSig=function(t){return t.date+"|"+(+t.amount).toFixed(2)+"|"+(t.payee||"")+"|"+t.cat+"|"+(t.acct||"")+"|"+(t.note||"")+"|"+(t.loan||"")};
+        var lSig=function(l){var tt=lendTotals(l);return (l.person||"")+"|"+tt.amount.toFixed(2)+"|"+tt.repaid.toFixed(2)+"|"+((l.people&&l.people.length)||0)};
+        var freshT=keepNew(added, txns, tSig);
+        var freshL=keepNew(addedLends, lends, lSig);
+        var skipped=(added.length-freshT.length)+(addedLends.length-freshL.length);
+
+        txns=freshT.concat(txns); lends=freshL.concat(lends);
+        save(); fillCatSelect(); fillAcctSelect(); fillPayees(); render();
+        if(skipped){
+          var n=freshT.length+freshL.length;
+          alert("Imported "+n+" new row"+(n===1?"":"s")+".\nSkipped "+skipped+" already in the ledger.");
+        }
+      }catch(err){alert("Couldn't read that CSV.")}
+    };
+    rd.readAsText(f); e.target.value="";
+  });
+
+  // ---- full backup / restore ----
+  // Unlike CSV (transactions/lends only, additive merge), this captures every
+  // piece of state — categories, accounts, recurring templates, loans, lends,
+  // transactions, and the currency symbol — so a restore reproduces the file
+  // you exported from exactly. This is the fix for local-file storage being
+  // tied to one specific downloaded file: back up from the old file, restore
+  // into the new one.
+  $("backup").onclick=function(){
+    var payload={version:1,exported:stamp(":"),cats:cats,accts:accts,recurring:recurring,lends:lends,loans:loans,txns:txns,symbol:symbol};
+    var json=JSON.stringify(payload,null,2);
+    var blob=new Blob([json],{type:"application/json"});
+    var url=URL.createObjectURL(blob);
+    var filename="Ledger Backup "+stamp("-")+".json";
+    try{
+      var a=document.createElement("a"); a.href=url; a.download=filename; a.style.display="none";
+      document.body.appendChild(a); a.click(); document.body.removeChild(a);
+      setTimeout(function(){ URL.revokeObjectURL(url); }, 4000);
+    }catch(err){
+      try{ window.open(url,"_blank"); }
+      catch(err2){ alert("Couldn't trigger a download in this preview. Open this file in a regular browser tab and try again."); }
+    }
+  };
+
+  $("restore").onclick=function(){$("backupFile").click()};
+  $("backupFile").addEventListener("change",function(e){
+    var f=e.target.files[0]; if(!f)return;
+    var rd=new FileReader();
+    rd.onload=function(){
+      try{
+        var d=JSON.parse(String(rd.result));
+        if(!d || typeof d!=="object" || !Array.isArray(d.txns)){
+          alert("That doesn't look like a Ledger backup file."); return;
+        }
+        var n=(d.txns||[]).length;
+        var ok=confirm("Restore this backup?\n\n"+n+" transaction"+(n===1?"":"s")+", plus categories, accounts, recurring items, and loans.\n\nThis REPLACES everything currently in this file — that can't be undone. Consider a Full Backup of what's here first if you're not sure.");
+        if(!ok)return;
+        cats=d.cats||DEFAULT_CATS.slice();
+        accts=d.accts||DEFAULT_ACCTS.slice();
+        recurring=d.recurring||[];
+        lends=d.lends||[];
+        loans=d.loans||[];
+        txns=d.txns||[];
+        symbol=d.symbol||"$";
+        save();
+        fillCatSelect(); fillAcctSelect(); fillPayees();
+        month=monthOf(todayISO());
+        render();
+        alert("Restored.");
+      }catch(err){ alert("Couldn't read that backup file."); }
+    };
+    rd.readAsText(f); e.target.value="";
+  });
+
+  // ---- categories drawer ----
+  function renderCatEdit(){
+    var box=$("catEdit"); box.innerHTML="";
+    ["in","out"].forEach(function(tp){
+      var sec=document.createElement("div"); sec.style.marginBottom="18px";
+      var h=document.createElement("div"); h.className="sec"; h.textContent=tp==="in"?"Income":"Spending";
+      sec.appendChild(h);
+      cats.filter(function(x){return x.type===tp}).forEach(function(x){
+        var block=document.createElement("div"); block.style.marginBottom="10px";
+        var r=document.createElement("div"); r.style.cssText="display:flex;gap:6px";
+        var inp=document.createElement("input"); inp.value=x.name; inp.style.cssText="flex:1;padding:8px 10px";
+        inp.addEventListener("input",function(){x.name=this.value;save();render();fillCatSelect()});
+        var db=document.createElement("button"); db.className="del"; db.textContent="×";
+        db.onclick=function(){
+          if(txns.some(function(t){return t.cat===x.id})){alert("That category has transactions. Reassign or delete them first.");return;}
+          cats=cats.filter(function(y){return y.id!==x.id}); save(); render(); fillCatSelect(); renderCatEdit();
+        };
+        r.appendChild(inp); r.appendChild(db);
+        // end date row
+        var er=document.createElement("div");
+        er.style.cssText="display:flex;align-items:center;gap:6px;margin:4px 0 0 2px";
+        var lab=document.createElement("span"); lab.style.cssText="font-size:11px;color:var(--sub)";
+        var ended=x.end && x.end<todayISO();
+        lab.textContent=x.end?(ended?"Ended":"Ends"):"Ends";
+        if(ended)lab.style.color="var(--spend)";
+        var de=document.createElement("input"); de.type="date"; de.value=x.end||"";
+        de.style.cssText="font-size:12px;padding:5px 8px";
+        de.addEventListener("change",function(){x.end=this.value||undefined;save();render();fillCatSelect();renderCatEdit()});
+        er.appendChild(lab); er.appendChild(de);
+        if(x.end){
+          var clr=document.createElement("button"); clr.className="ghost"; clr.textContent="make permanent";
+          clr.style.cssText="font-size:11px;padding:4px 8px";
+          clr.onclick=function(){x.end=undefined;x.total=undefined;save();render();fillCatSelect();renderCatEdit()};
+          er.appendChild(clr);
+        }
+        block.appendChild(r); block.appendChild(er);
+        if(x.end){
+          var tr=document.createElement("div");
+          tr.style.cssText="display:flex;align-items:center;gap:6px;margin:4px 0 0 2px";
+          var tl=document.createElement("span"); tl.textContent="Total owed"; tl.style.cssText="font-size:11px;color:var(--sub)";
+          var ti=document.createElement("input"); ti.type="number"; ti.min="0"; ti.step="0.01";
+          ti.placeholder="optional"; ti.value=x.total||"";
+          ti.style.cssText="font-size:12px;padding:5px 8px;width:110px";
+          ti.addEventListener("input",function(){var v=parseFloat(this.value);x.total=(v>0)?v:undefined;save();render()});
+          tr.appendChild(tl); tr.appendChild(ti);
+          block.appendChild(tr);
+        }
+        sec.appendChild(block);
+      });
+      var ab=document.createElement("button"); ab.className="ghost";
+      ab.textContent="+ Add "+(tp==="in"?"income":"spending")+" category";
+      ab.onclick=function(){cats.push({id:uid(),name:"New category",type:tp});save();fillCatSelect();renderCatEdit()};
+      sec.appendChild(ab); box.appendChild(sec);
+    });
+  }
+  // Manage overlay handlers are consolidated near the bottom of the script.
+
+  // ---- accounts drawer ----
+  function renderAcctEdit(){
+    var box=$("acctEdit"); box.innerHTML="";
+    accts.forEach(function(a){
+      var r=document.createElement("div"); r.style.cssText="display:flex;gap:6px;margin-bottom:6px";
+      var inp=document.createElement("input"); inp.value=a.name; inp.style.cssText="flex:1;padding:8px 10px";
+      inp.addEventListener("input",function(){a.name=this.value;save();render();fillAcctSelect()});
+      var kind=document.createElement("select"); kind.style.cssText="font-size:12px;padding:8px 6px";
+      [["bank","Bank"],["card","Card"]].forEach(function(o){
+        var op=document.createElement("option"); op.value=o[0]; op.textContent=o[1]; if(a.kind===o[0])op.selected=true; kind.appendChild(op);
+      });
+      kind.addEventListener("change",function(){a.kind=this.value;save();render()});
+      var db=document.createElement("button"); db.className="del"; db.textContent="×";
+      db.onclick=function(){
+        if(txns.some(function(t){return t.acct===a.id})){alert("That account has transactions. Reassign or delete them first.");return;}
+        accts=accts.filter(function(y){return y.id!==a.id}); save(); render(); fillAcctSelect(); renderAcctEdit();
+      };
+      r.appendChild(inp); r.appendChild(kind); r.appendChild(db); box.appendChild(r);
+    });
+    var ab=document.createElement("button"); ab.className="ghost"; ab.style.marginTop="4px";
+    ab.textContent="+ Add account";
+    ab.onclick=function(){accts.push({id:uid(),name:"New account",kind:"card"});save();fillAcctSelect();renderAcctEdit()};
+    box.appendChild(ab);
+  }
+
+
+  // ---- recurring engine ----
+  // Materialize each recurring item into a real transaction for every month
+  // from its start through the current month (catching up any gaps).
+  //   rt.day       — day of month to post on (1-31, clamped to the month's length). Default 1.
+  //   rt.payTiming — income only: "same" posts within the anchor month (default);
+  //                  "next" shifts the posting to the following month, for payroll
+  //                  that pays out in arrears (e.g. August's pay lands in September).
+  function runRecurring(){
+    var cur=monthOf(todayISO()), changed=false;
+    recurring.forEach(function(rt){
+      if(!(rt.amount>0)||!rt.cat||!(rt.payee&&rt.payee.trim()))return;
+      if(!rt.through && !rt.start)return;   // no anchor month — nothing to generate from
+      var m = rt.through ? monthAfter(rt.through) : rt.start;
+      var isInc=catType(rt.cat)==="in";
+      var guard=0;
+      while(m<=cur && guard<600){
+        guard++;
+        var cc=catById(rt.cat);
+        // stop generating once a loan/temp category has ended
+        if(cc && cc.end && cc.end < (m+"-01")){ rt.through=m; m=monthAfter(m); continue; }
+        var postMonth = (isInc && rt.payTiming==="next") ? monthAfter(m) : m;
+        var day = Math.max(1, Math.min(rt.day||1, daysInMonth(postMonth)));
+        var postDate = postMonth+"-"+String(day).padStart(2,"0");
+        var acctFor = isInc ? defaultIncomeAcct() : (rt.acct||undefined);
+        txns.push({id:uid(),date:postDate,amount:rt.amount,payee:rt.payee,cat:rt.cat,acct:acctFor,note:"",recFrom:rt.id});
+        rt.through=m; changed=true; m=monthAfter(m);
+      }
+    });
+    if(changed)save();
+  }
+
+  // reflect a template edit onto the most recently generated entry. Only the
+  // day-of-month is reapplied here (not the month itself) so tweaking a field
+  // mid-edit can't make the entry jump to a different month underneath you —
+  // a payTiming change only affects entries generated after that point on.
+  function syncCurrent(rt){
+    var mine=txns.filter(function(t){return t.recFrom===rt.id});
+    if(!mine.length) return;
+    var latest=mine.reduce(function(a,b){return a.date>b.date?a:b;});
+    latest.amount=rt.amount; latest.payee=rt.payee; latest.cat=rt.cat;
+    latest.acct=(catType(rt.cat)==="in")?defaultIncomeAcct():(rt.acct||undefined);
+    var ym=monthOf(latest.date);
+    var day=Math.max(1, Math.min(rt.day||1, daysInMonth(ym)));
+    latest.date=ym+"-"+String(day).padStart(2,"0");
+  }
+
+  function groupedCatOptions(sel,selectedId){
+    sel.innerHTML="";
+    [["out","Spending"],["in","Income"]].forEach(function(g){
+      var list=cats.filter(function(x){return x.type===g[0]});
+      if(!list.length)return;
+      var og=document.createElement("optgroup"); og.label=g[1];
+      list.forEach(function(x){
+        var o=document.createElement("option"); o.value=x.id; o.textContent=x.name;
+        if(x.id===selectedId)o.selected=true; og.appendChild(o);
+      });
+      sel.appendChild(og);
+    });
+  }
+
+  function renderRecEdit(){
+    var box=$("recEdit"); box.innerHTML="";
+
+    // build one editable recurring row; behavior branches on the item's type
+    function buildItem(rt){
+      var isIncome=catType(rt.cat)==="in";
+      var block=document.createElement("div");
+      block.style.cssText="border:1px solid var(--line);border-radius:10px;padding:10px;margin-bottom:10px";
+      // payee/source label
+      var lbl=document.createElement("input");
+      lbl.placeholder=isIncome?"Source (e.g. Employer, Rental)":"Payee (e.g. Netflix, landlord)";
+      lbl.value=rt.payee||""; lbl.style.cssText="width:100%;padding:8px 10px;margin-bottom:6px";
+      var warn=document.createElement("div");
+      warn.textContent=isIncome?"Add a source — this income won't post without one.":"Add a payee — this bill won't post without one.";
+      warn.style.cssText="font-size:12px;color:var(--spend);margin:-2px 0 6px";
+      if(rt.payee&&rt.payee.trim())warn.classList.add("hide");
+      lbl.addEventListener("input",function(){
+        rt.payee=this.value; warn.classList.toggle("hide",!!this.value.trim());
+        syncCurrent(rt);save();render();
+      });
+      // amount + category (category list filtered to this item's type)
+      var r1=document.createElement("div"); r1.style.cssText="display:flex;gap:6px;margin-bottom:6px";
+      var amtWrap=document.createElement("div"); amtWrap.style.cssText="position:relative;flex:0 0 110px";
+      var pre=document.createElement("span"); pre.textContent=symbol; pre.style.cssText="position:absolute;left:10px;top:9px;color:var(--sub);font-size:13px";
+      var amt=document.createElement("input"); amt.type="number"; amt.min="0"; amt.step="0.01"; amt.placeholder="0.00"; amt.value=rt.amount||"";
+      amt.className="tnum"; amt.style.cssText="width:100%;padding:8px 8px 8px 22px";
+      amt.addEventListener("input",function(){var v=parseFloat(this.value);rt.amount=(v>0)?v:0;syncCurrent(rt);save();render()});
+      amtWrap.appendChild(pre); amtWrap.appendChild(amt);
+      var catSel=document.createElement("select"); catSel.style.cssText="flex:1;padding:8px 8px";
+      var tp=isIncome?"in":"out";
+      cats.filter(function(x){return x.type===tp}).forEach(function(x){
+        var o=document.createElement("option"); o.value=x.id; o.textContent=x.name; if(x.id===rt.cat)o.selected=true; catSel.appendChild(o);
+      });
+      catSel.addEventListener("change",function(){rt.cat=this.value;syncCurrent(rt);save();render()});
+      r1.appendChild(amtWrap); r1.appendChild(catSel);
+      // account row: income routes to checking (no picker); bills pick an account
+      var r2=document.createElement("div"); r2.style.cssText="display:flex;gap:6px;align-items:center";
+      if(isIncome){
+        var lands=document.createElement("div");
+        lands.style.cssText="flex:1;font-size:12px;color:var(--sub);padding:8px 2px";
+        lands.textContent="Deposits to "+(acctName(defaultIncomeAcct())||"Checking");
+        r2.appendChild(lands);
+      }else{
+        var acctSel=document.createElement("select"); acctSel.style.cssText="flex:1;padding:8px 8px";
+        var ph=document.createElement("option"); ph.value=""; ph.textContent="Account…"; ph.disabled=true; if(!rt.acct)ph.selected=true; acctSel.appendChild(ph);
+        accts.forEach(function(a){var o=document.createElement("option");o.value=a.id;o.textContent=a.name;if(a.id===rt.acct)o.selected=true;acctSel.appendChild(o)});
+        acctSel.addEventListener("change",function(){rt.acct=this.value||undefined;syncCurrent(rt);save();render()});
+        r2.appendChild(acctSel);
+      }
+      var db=document.createElement("button"); db.className="del"; db.textContent="×";
+      db.title=isIncome?"Remove this income source":"Remove this recurring bill";
+      db.onclick=function(){
+        var gen=txns.filter(function(t){return t.recFrom===rt.id});
+        if(gen.length){
+          var wipe=confirm("This has already added "+gen.length+" entr"+(gen.length===1?"y":"ies")+" to your ledger.\n\nOK — delete those entries too.\nCancel — keep them as ordinary transactions.");
+          if(wipe) txns=txns.filter(function(t){return t.recFrom!==rt.id});
+          else gen.forEach(function(t){delete t.recFrom});
+        }
+        recurring=recurring.filter(function(y){return y.id!==rt.id}); save(); render(); renderRecEdit();
+      };
+      r2.appendChild(db);
+      block.appendChild(lbl); block.appendChild(warn); block.appendChild(r1); block.appendChild(r2);
+      // when it posts: day of month for everyone, plus a payroll-timing choice for income
+      var r2b=document.createElement("div"); r2b.style.cssText="display:flex;align-items:center;gap:6px;margin-top:6px";
+      var dayLab=document.createElement("span"); dayLab.textContent="Day of month"; dayLab.style.cssText="font-size:12px;color:var(--sub);white-space:nowrap";
+      var dayI=document.createElement("input"); dayI.type="number"; dayI.min="1"; dayI.max="31"; dayI.value=rt.day||1;
+      dayI.className="tnum"; dayI.style.cssText="width:60px;padding:8px 8px";
+      dayI.addEventListener("input",function(){var v=parseInt(this.value,10);rt.day=(v>=1&&v<=31)?v:1;syncCurrent(rt);save();render()});
+      r2b.appendChild(dayLab); r2b.appendChild(dayI);
+      if(isIncome){
+        var timLab=document.createElement("span"); timLab.textContent="Paid"; timLab.style.cssText="font-size:12px;color:var(--sub);margin-left:6px";
+        var timSel=document.createElement("select"); timSel.style.cssText="flex:1;padding:8px 8px";
+        [["same","this month"],["next","start of next month"]].forEach(function(o){
+          var op=document.createElement("option"); op.value=o[0]; op.textContent=o[1];
+          if((rt.payTiming||"same")===o[0])op.selected=true; timSel.appendChild(op);
+        });
+        timSel.addEventListener("change",function(){rt.payTiming=this.value;save();render()});
+        r2b.appendChild(timLab); r2b.appendChild(timSel);
+      }
+      block.appendChild(r2b);
+      // pays down a loan — spending items only
+      if(!isIncome && loans.length){
+        var r3=document.createElement("div"); r3.style.cssText="display:flex;align-items:center;gap:6px;margin-top:6px";
+        var lab=document.createElement("span"); lab.textContent="Pays down"; lab.style.cssText="font-size:12px;color:var(--sub)";
+        var loanSel=document.createElement("select"); loanSel.style.cssText="flex:1;padding:8px 8px";
+        var none=document.createElement("option"); none.value=""; none.textContent="— nothing —"; if(!rt.loan)none.selected=true; loanSel.appendChild(none);
+        loans.forEach(function(ln){
+          var o=document.createElement("option"); o.value=ln.id; o.textContent=ln.name||"(unnamed loan)";
+          if(ln.id===rt.loan)o.selected=true; loanSel.appendChild(o);
+        });
+        loanSel.addEventListener("change",function(){rt.loan=this.value||undefined;save();render()});
+        r3.appendChild(lab); r3.appendChild(loanSel); block.appendChild(r3);
+      }
+      return block;
+    }
+
+    // ---- Income section ----
+    var incHead=document.createElement("div"); incHead.className="sec"; incHead.textContent="Income";
+    box.appendChild(incHead);
+    var incItems=recurring.filter(function(rt){return catType(rt.cat)==="in"});
+    incItems.forEach(function(rt){ box.appendChild(buildItem(rt)); });
+    var addIn=document.createElement("button"); addIn.className="ghost"; addIn.style.marginBottom="18px";
+    addIn.textContent="+ Add recurring income";
+    addIn.onclick=function(){
+      var firstIn=cats.filter(function(x){return x.type==="in"})[0];
+      if(!firstIn){ alert("Add an income category first (Categories drawer)."); return; }
+      recurring.push({id:uid(),payee:"",note:"",amount:0,cat:firstIn.id,start:monthOf(todayISO())});
+      save(); renderRecEdit();
+    };
+    box.appendChild(addIn);
+
+    // ---- Bills section ----
+    var billHead=document.createElement("div"); billHead.className="sec"; billHead.textContent="Bills";
+    box.appendChild(billHead);
+    var billItems=recurring.filter(function(rt){return catType(rt.cat)!=="in"});
+    billItems.forEach(function(rt){ box.appendChild(buildItem(rt)); });
+    var addOut=document.createElement("button"); addOut.className="ghost";
+    addOut.textContent="+ Add recurring bill";
+    addOut.onclick=function(){
+      var firstOut=cats.filter(function(x){return x.type==="out"})[0];
+      recurring.push({id:uid(),payee:"",note:"",amount:0,cat:firstOut?firstOut.id:(cats[0]&&cats[0].id),acct:(accts[0]&&accts[0].id),start:monthOf(todayISO())});
+      save(); renderRecEdit();
+    };
+    box.appendChild(addOut);
+  }
+
+
+
+  // ---- lent out drawer ----
+  function renderLendEdit(){
+    var box=$("lendEdit"); box.innerHTML="";
+    function money(labelText, val, on){
+      var wrap=document.createElement("div"); wrap.style.cssText="flex:1";
+      var lb=document.createElement("div"); lb.textContent=labelText; lb.style.cssText="font-size:10px;color:var(--sub);margin-bottom:2px";
+      var pos=document.createElement("div"); pos.style.cssText="position:relative";
+      var pre=document.createElement("span"); pre.textContent=symbol; pre.style.cssText="position:absolute;left:9px;top:8px;color:var(--sub);font-size:13px";
+      var inp=document.createElement("input"); inp.type="number"; inp.min="0"; inp.step="0.01"; inp.className="tnum";
+      inp.value=(val||val===0)?val:""; inp.style.cssText="width:100%;padding:7px 8px 7px 20px";
+      inp.addEventListener("input",function(){on(parseFloat(this.value));});
+      pos.appendChild(pre); pos.appendChild(inp); wrap.appendChild(lb); wrap.appendChild(pos);
+      return {wrap:wrap, inp:inp};
+    }
+    lends.forEach(function(ln){
+      var block=document.createElement("div");
+      block.style.cssText="border:1px solid var(--line);border-radius:10px;padding:10px;margin-bottom:10px";
+      // title row + delete
+      var titleRow=document.createElement("div"); titleRow.style.cssText="display:flex;gap:6px;margin-bottom:6px";
+      var who=document.createElement("input");
+      who.placeholder=(ln.people&&ln.people.length)?"Label (e.g. Hotel — Vegas trip)":"Who (name)"; who.value=ln.person||"";
+      who.style.cssText="flex:1;padding:8px 10px";
+      who.addEventListener("input",function(){ln.person=this.value;save();render()});
+      var db=document.createElement("button"); db.className="del"; db.textContent="×"; db.title="Remove this loan";
+      db.onclick=function(){ lends=lends.filter(function(y){return y.id!==ln.id}); save(); render(); renderLendEdit(); };
+      titleRow.appendChild(who); titleRow.appendChild(db);
+      block.appendChild(titleRow);
+
+      var split=ln.people && ln.people.length;
+      if(!split){
+        // simple single-person: Lent / Paid back
+        var r1=document.createElement("div"); r1.style.cssText="display:flex;gap:6px;margin-bottom:6px";
+        var m1=money("Lent", ln.amount, function(v){ln.amount=(v>0)?v:0;save();render()});
+        var m2=money("Paid back", ln.repaid, function(v){ln.repaid=(v>0)?v:0;save();render()});
+        r1.appendChild(m1.wrap); r1.appendChild(m2.wrap); block.appendChild(r1);
+        var splitBtn=document.createElement("button"); splitBtn.className="ghost"; splitBtn.style.cssText="font-size:12px;padding:5px 8px;margin-bottom:6px";
+        splitBtn.textContent="Split among people";
+        splitBtn.onclick=function(){
+          ln.people=[{id:uid(),name:"",owed:ln.amount||0,repaid:ln.repaid||0}];
+          delete ln.amount; delete ln.repaid;
+          save(); render(); renderLendEdit();
+        };
+        block.appendChild(splitBtn);
+      }else{
+        // split: one row per person + running total
+        var hint=document.createElement("div"); hint.textContent="Who owes what"; hint.style.cssText="font-size:10px;color:var(--sub);margin-bottom:4px";
+        block.appendChild(hint);
+        var totalsEl=document.createElement("div");
+        totalsEl.style.cssText="font-size:12px;color:var(--sub);margin:6px 0";
+        function refreshTotals(){
+          var tt=lendTotals(ln);
+          totalsEl.textContent=fmt(tt.amount)+" lent · "+fmt(tt.repaid)+" back · "+fmt(tt.outstanding)+" outstanding";
+        }
+        ln.people.forEach(function(p){
+          var pr=document.createElement("div"); pr.style.cssText="display:flex;gap:6px;margin-bottom:6px;align-items:center";
+          var pn=document.createElement("input"); pn.placeholder="Name"; pn.value=p.name||"";
+          pn.style.cssText="flex:1 1 70px;padding:7px 8px;min-width:0";
+          pn.addEventListener("input",function(){p.name=this.value;save();render()});
+          var mo=money("Owes", p.owed, function(v){p.owed=(v>0)?v:0;save();refreshTotals();render()});
+          var mp=money("Paid", p.repaid, function(v){p.repaid=(v>0)?v:0;save();refreshTotals();render()});
+          mo.wrap.style.flex="0 0 84px"; mp.wrap.style.flex="0 0 84px";
+          var pdb=document.createElement("button"); pdb.className="del"; pdb.textContent="×"; pdb.title="Remove person";
+          pdb.onclick=function(){
+            ln.people=ln.people.filter(function(y){return y.id!==p.id});
+            save(); render(); renderLendEdit();
+          };
+          pr.appendChild(pn); pr.appendChild(mo.wrap); pr.appendChild(mp.wrap); pr.appendChild(pdb);
+          block.appendChild(pr);
+        });
+        var addP=document.createElement("button"); addP.className="ghost"; addP.style.cssText="font-size:12px;padding:5px 8px;margin-bottom:6px";
+        addP.textContent="+ Add person";
+        addP.onclick=function(){ ln.people.push({id:uid(),name:"",owed:0,repaid:0}); save(); render(); renderLendEdit(); };
+        block.appendChild(addP);
+        refreshTotals(); block.appendChild(totalsEl);
+      }
+      // note (shared)
+      var note=document.createElement("input"); note.placeholder="Note (optional)"; note.value=ln.note||"";
+      note.style.cssText="width:100%;padding:8px 10px";
+      note.addEventListener("input",function(){ln.note=this.value;save();render()});
+      block.appendChild(note);
+      box.appendChild(block);
+    });
+    var ab=document.createElement("button"); ab.className="ghost";
+    ab.textContent="+ Add a loan you gave";
+    ab.onclick=function(){ lends.push({id:uid(),person:"",amount:0,repaid:0,note:""}); save(); render(); renderLendEdit(); };
+    box.appendChild(ab);
+  }
+
+
+  // ---- loan balances drawer ----
+  function renderDebtEdit(){
+    var box=$("debtEdit"); box.innerHTML="";
+    loans.forEach(function(ln){
+      var block=document.createElement("div");
+      block.style.cssText="border:1px solid var(--line);border-radius:10px;padding:10px;margin-bottom:10px";
+      // name + delete
+      var r0=document.createElement("div"); r0.style.cssText="display:flex;gap:6px;margin-bottom:6px";
+      var nm=document.createElement("input"); nm.placeholder="Loan name (e.g. Car, Student loan)"; nm.value=ln.name||"";
+      nm.style.cssText="flex:1;padding:8px 10px";
+      nm.addEventListener("input",function(){ln.name=this.value;save();render()});
+      var db=document.createElement("button"); db.className="del"; db.textContent="×"; db.title="Remove this loan";
+      db.onclick=function(){ loans=loans.filter(function(y){return y.id!==ln.id}); save(); render(); renderDebtEdit(); };
+      r0.appendChild(nm); r0.appendChild(db); block.appendChild(r0);
+      // starting balance
+      var r1=document.createElement("div"); r1.style.cssText="margin-bottom:6px";
+      var l1=document.createElement("div"); l1.textContent="Starting balance"; l1.style.cssText="font-size:10px;color:var(--sub);margin-bottom:2px";
+      var pos=document.createElement("div"); pos.style.cssText="position:relative";
+      var pre=document.createElement("span"); pre.textContent=symbol; pre.style.cssText="position:absolute;left:9px;top:9px;color:var(--sub);font-size:13px";
+      var si=document.createElement("input"); si.type="number"; si.min="0"; si.step="0.01"; si.className="tnum";
+      si.value=(ln.start||ln.start===0)?ln.start:""; si.style.cssText="width:100%;padding:8px 8px 8px 20px";
+      si.addEventListener("input",function(){var v=parseFloat(this.value);ln.start=(v>0)?v:0;save();render()});
+      pos.appendChild(pre); pos.appendChild(si); r1.appendChild(l1); r1.appendChild(pos); block.appendChild(r1);
+      // original financed amount (optional) — reference only, for the standard-term comparison
+      var r1b=document.createElement("div"); r1b.style.cssText="margin-bottom:6px";
+      var l1b=document.createElement("div"); l1b.textContent="Original financed amount (optional)"; l1b.style.cssText="font-size:10px;color:var(--sub);margin-bottom:2px";
+      var posb=document.createElement("div"); posb.style.cssText="position:relative";
+      var preb=document.createElement("span"); preb.textContent=symbol; preb.style.cssText="position:absolute;left:9px;top:9px;color:var(--sub);font-size:13px";
+      var fi=document.createElement("input"); fi.type="number"; fi.min="0"; fi.step="0.01"; fi.className="tnum";
+      fi.placeholder="what the loan was for, at origination"; fi.value=(ln.financed||ln.financed===0)?ln.financed:""; fi.style.cssText="width:100%;padding:8px 8px 8px 20px";
+      fi.addEventListener("input",function(){var v=parseFloat(this.value);ln.financed=(v>0)?v:0;save();render()});
+      posb.appendChild(preb); posb.appendChild(fi); r1b.appendChild(l1b); r1b.appendChild(posb); block.appendChild(r1b);
+      // interest rate + opening month
+      var r2=document.createElement("div"); r2.style.cssText="display:flex;gap:8px;margin-bottom:6px";
+      var apW=document.createElement("div"); apW.style.flex="1";
+      var apL=document.createElement("div"); apL.textContent="Interest rate (APR %)"; apL.style.cssText="font-size:10px;color:var(--sub);margin-bottom:2px";
+      var apI=document.createElement("input"); apI.type="number"; apI.min="0"; apI.step="0.01"; apI.className="tnum";
+      apI.placeholder="e.g. 6.5"; apI.value=(ln.apr||ln.apr===0)?ln.apr:""; apI.style.cssText="width:100%;padding:8px 8px";
+      apI.addEventListener("input",function(){var v=parseFloat(this.value);ln.apr=(v>0)?v:0;save();render()});
+      apW.appendChild(apL); apW.appendChild(apI);
+      var opW=document.createElement("div"); opW.style.flex="1";
+      var opL=document.createElement("div"); opL.textContent="Balance as of"; opL.style.cssText="font-size:10px;color:var(--sub);margin-bottom:2px";
+      var opI=document.createElement("input"); opI.type="month"; opI.value=ln.opened||monthOf(todayISO());
+      opI.style.cssText="width:100%;padding:8px 8px";
+      opI.addEventListener("input",function(){ln.opened=this.value||undefined;save();render()});
+      opW.appendChild(opL); opW.appendChild(opI);
+      r2.appendChild(apW); r2.appendChild(opW); block.appendChild(r2);
+      // interest method
+      var r2b=document.createElement("div"); r2b.style.marginBottom="6px";
+      var mL=document.createElement("div"); mL.textContent="Interest type"; mL.style.cssText="font-size:10px;color:var(--sub);margin-bottom:2px";
+      var mS=document.createElement("select"); mS.style.cssText="width:100%;padding:8px 8px";
+      [["simple","Simple — mortgage, auto, personal, most student loans"],
+       ["compound","Compound — credit-card style, some private student loans"]].forEach(function(o){
+        var op=document.createElement("option"); op.value=o[0]; op.textContent=o[1];
+        if((ln.method||"simple")===o[0])op.selected=true; mS.appendChild(op);
+      });
+      mS.addEventListener("change",function(){ln.method=this.value;save();render()});
+      r2b.appendChild(mL); r2b.appendChild(mS); block.appendChild(r2b);
+      // expected monthly payment (used for projection until a recurring bill is tagged)
+      var r2c=document.createElement("div"); r2c.style.marginBottom="6px";
+      var epL=document.createElement("div"); epL.textContent="Expected monthly payment"; epL.style.cssText="font-size:10px;color:var(--sub);margin-bottom:2px";
+      var epPos=document.createElement("div"); epPos.style.cssText="position:relative";
+      var epPre=document.createElement("span"); epPre.textContent=symbol; epPre.style.cssText="position:absolute;left:9px;top:9px;color:var(--sub);font-size:13px";
+      var epI=document.createElement("input"); epI.type="number"; epI.min="0"; epI.step="0.01"; epI.className="tnum";
+      epI.placeholder="e.g. 566.00"; epI.value=(ln.estPay||ln.estPay===0)?ln.estPay:""; epI.style.cssText="width:100%;padding:8px 8px 8px 20px";
+      epI.addEventListener("input",function(){var v=parseFloat(this.value);ln.estPay=(v>0)?v:0;save();render()});
+      epPos.appendChild(epPre); epPos.appendChild(epI); r2c.appendChild(epL); r2c.appendChild(epPos);
+      // note when a real bill is overriding this
+      var tagged=recurring.some(function(rt){return rt.loan===ln.id && rt.amount>0});
+      if(tagged){
+        var ov=document.createElement("div"); ov.style.cssText="font-size:11px;color:var(--sub);margin-top:3px";
+        ov.textContent="A tagged recurring bill is set — the projection uses that instead.";
+        r2c.appendChild(ov);
+      }
+      block.appendChild(r2c);
+      // live remaining readout + payoff (from tagged bills or the estimate)
+      var linked=recurring.filter(function(rt){return rt.loan===ln.id});
+      var info=document.createElement("div");
+      info.style.cssText="font-size:12px;color:var(--sub);margin-top:8px";
+      var po2=loanPayoff(ln);
+      var proj = po2.done ? " · paid off"
+               : po2.noPayment ? ""
+               : po2.underwater ? " · payment below interest"
+               : " · payoff "+monthLabel(po2.payoffYM);
+      if(linked.length){
+        var names=linked.map(function(rt){return rt.payee||"(unnamed bill)"}).join(", ");
+        info.textContent=fmt(loanRemaining(ln))+" remaining · fed by: "+names+proj;
+      }else if(po2.payoffYM){
+        info.textContent=fmt(loanRemaining(ln))+" remaining · est. payoff "+monthLabel(po2.payoffYM);
+      }else{
+        info.textContent=fmt(loanRemaining(ln))+" remaining · add an expected payment or tag a recurring bill.";
+      }
+      block.appendChild(info);
+      box.appendChild(block);
+    });
+    var ab=document.createElement("button"); ab.className="ghost";
+    ab.textContent="+ Add a loan";
+    ab.onclick=function(){ loans.push({id:uid(),name:"",start:0,financed:0,apr:0,method:"simple",estPay:0,opened:monthOf(todayISO())}); save(); render(); renderDebtEdit(); };
+    box.appendChild(ab);
+  }
+  // ---- Manage overlay: one entry point for Loans / Owed to you / Recurring / Accounts / Categories ----
+  var manageSecEl = {loans:"secLoans", lend:"secLend", rec:"secRec", accts:"secAccts", cats:"secCats"};
+  var manageTitles = {loans:"Loans", lend:"Owed to you", rec:"Recurring", accts:"Accounts", cats:"Categories"};
+  var manageRenderers = {loans:renderDebtEdit, lend:renderLendEdit, rec:renderRecEdit, accts:renderAcctEdit, cats:renderCatEdit};
+  var currentManageSection=null;
+
+  function showManageMenu(){
+    currentManageSection=null;
+    $("manageMenu").classList.remove("hide");
+    $("manageSections").classList.add("hide");
+    Object.keys(manageSecEl).forEach(function(k){ $(manageSecEl[k]).classList.add("hide"); });
+    $("manageBack").classList.add("hide");
+    $("manageTitle").textContent="Manage";
+  }
+  function openManageSection(key){
+    currentManageSection=key;
+    $("manageMenu").classList.add("hide");
+    $("manageSections").classList.remove("hide");
+    Object.keys(manageSecEl).forEach(function(k){ $(manageSecEl[k]).classList.toggle("hide", k!==key); });
+    $("manageBack").classList.remove("hide");
+    $("manageTitle").textContent=manageTitles[key];
+    manageRenderers[key]();
+  }
+  // leaving Recurring needs to actually materialize any new templates/edits
+  function flushManage(){ if(currentManageSection==="rec") runRecurring(); render(); }
+
+  $("manageFab").onclick=function(){ $("manageBg").classList.remove("hide"); showManageMenu(); };
+  Array.prototype.forEach.call(document.querySelectorAll("#manageMenu [data-sec]"), function(b){
+    b.onclick=function(){ openManageSection(this.getAttribute("data-sec")); };
+  });
+  $("manageBack").onclick=function(){ flushManage(); showManageMenu(); };
+  $("manageDone").onclick=function(){ flushManage(); $("manageBg").classList.add("hide"); };
+  $("manageBg").onclick=function(e){ if(e.target===$("manageBg")){ flushManage(); $("manageBg").classList.add("hide"); } };
+
+  // ---- init ----
+  $("date").value=todayISO();
+  runRecurring();
+  fillAcctSelect();
+  applyMode();      // sets category list + account visibility for the default (spending)
+  fillPayees();
+  render();
+
+  // PWA install/offline support — only works when served over http(s), not
+  // when the file is opened directly (file://), where registration is a no-op.
+  if("serviceWorker" in navigator && location.protocol!=="file:"){
+    window.addEventListener("load", function(){
+      navigator.serviceWorker.register("sw.js").catch(function(){ /* no host to register against — fine */ });
+    });
+  }
+})();
+</script>
+</body>
+</html>
