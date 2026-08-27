@@ -156,7 +156,7 @@
 
   <!-- columns -->
   <div style="display:flex;flex-wrap:wrap;gap:16px">
-    <div style="flex:1 1 340px;min-width:300px">
+    <div style="flex:1 1 480px;min-width:300px">
       <div style="display:flex;align-items:baseline;justify-content:space-between;gap:8px;margin-bottom:9px;flex-wrap:wrap">
         <div class="sec" style="margin:0">Transactions</div>
         <div style="display:flex;gap:6px;flex-wrap:wrap">
@@ -169,10 +169,20 @@
           <button class="ghost hide" id="clearFilters" style="padding:5px 8px;font-size:11px">Clear</button>
         </div>
       </div>
-      <div class="sec" style="margin-bottom:6px">Spending</div>
-      <div class="card" id="txnListOut" style="overflow:hidden;margin-bottom:16px"></div>
-      <div class="sec" style="margin-bottom:6px">Income</div>
-      <div class="card" id="txnListIn" style="overflow:hidden"></div>
+      <div style="display:flex;gap:16px;flex-wrap:wrap">
+        <div style="flex:1 1 220px;min-width:220px">
+          <div class="sec paneHead" id="paneHeadOut" style="margin-bottom:6px;cursor:pointer;user-select:none">
+            <span id="paneChevOut">▾</span> Spending
+          </div>
+          <div class="card" id="txnListOut" style="overflow:hidden"></div>
+        </div>
+        <div style="flex:1 1 220px;min-width:220px">
+          <div class="sec paneHead" id="paneHeadIn" style="margin-bottom:6px;cursor:pointer;user-select:none">
+            <span id="paneChevIn">▾</span> Income
+          </div>
+          <div class="card" id="txnListIn" style="overflow:hidden"></div>
+        </div>
+      </div>
     </div>
     <div style="flex:1 1 260px;min-width:240px">
       <div class="sec">Where it went</div>
@@ -348,8 +358,15 @@
   }
 
   // ---- state ----
-  var cats=DEFAULT_CATS.slice(), accts=DEFAULT_ACCTS.slice(), recurring=[], lends=[], loans=[], txns=[], symbol="$", month=monthOf(todayISO());
-  var theme="slip", appTitle="Ledger", currency="USD";
+  // seeded from an uploaded Full Backup, so this opens showing your real
+  // data instead of an empty ledger. If real localStorage is later available
+  // (e.g. this file is hosted or reopened in a normal browser tab) and
+  // already has saved data in it, that takes precedence over this seed.
+  var EMBEDDED_BACKUP = {"version": 1, "exported": "2026-08-26 16:37:16", "cats": [{"id": "salary", "name": "Salary", "type": "in"}, {"id": "freelance", "name": "Freelance", "type": "in"}, {"id": "other-in", "name": "Other income", "type": "in"}, {"id": "housing", "name": "Rent / Housing", "type": "out"}, {"id": "groceries", "name": "Groceries", "type": "out"}, {"id": "dining", "name": "Dining out", "type": "out"}, {"id": "transport", "name": "Transport", "type": "out"}, {"id": "utilities", "name": "Utilities", "type": "out"}, {"id": "subs", "name": "Subscriptions", "type": "out"}, {"id": "shopping", "name": "Shopping", "type": "out"}, {"id": "health", "name": "Health", "type": "out"}, {"id": "fun", "name": "Entertainment", "type": "out"}, {"id": "loan", "name": "Loan", "type": "out"}, {"id": "other-out", "name": "Other spend", "type": "out"}], "accts": [{"id": "checking", "name": "Checking", "kind": "bank"}, {"id": "usbank", "name": "US Bank", "kind": "card"}, {"id": "amex", "name": "AMEX", "kind": "card"}, {"id": "applecard", "name": "Apple Card", "kind": "card"}, {"id": "capitalone", "name": "Capital One", "kind": "card"}, {"id": "wellsfargo", "name": "Wells Fargo Card", "kind": "card"}], "recurring": [{"id": "mpq152r", "payee": "Verizon", "note": "", "amount": 21.23, "cat": "subs", "acct": "checking", "start": "2026-08", "through": "2026-08"}, {"id": "sh4jybs", "payee": "Apple Savings", "note": "", "amount": 50, "cat": "other-out", "acct": "checking", "start": "2026-08", "through": "2026-08"}, {"id": "b69kzkl", "payee": "Rent", "note": "", "amount": 2340, "cat": "housing", "acct": "checking", "start": "2026-08", "through": "2026-08"}, {"id": "gdn9jko", "payee": "Amazon Prime", "note": "", "amount": 11.58, "cat": "subs", "acct": "checking", "start": "2026-08", "through": "2026-08"}, {"id": "5km2h6h", "payee": "GLS (Toyota)", "note": "", "amount": 219.96, "cat": "loan", "acct": "checking", "start": "2026-08", "loan": "8k7jgcu", "through": "2026-08"}, {"id": "og05ngv", "payee": "Discover Balance Transfer", "note": "", "amount": 100, "cat": "loan", "acct": "checking", "start": "2026-08", "loan": "kjogsra", "through": "2026-08"}, {"id": "l1whrfi", "payee": "Wells Fargo Card", "note": "", "amount": 200, "cat": "loan", "acct": "checking", "start": "2026-08", "loan": "qox76pb", "through": "2026-08"}, {"id": "1hpggfn", "payee": "Elantra", "note": "", "amount": 393.05, "cat": "housing", "acct": "checking", "start": "2026-08", "loan": "qadivmi", "through": "2026-08"}, {"id": "fr5cscj", "payee": "Insurance", "note": "", "amount": 262.59, "cat": "utilities", "acct": "checking", "start": "2026-08", "through": "2026-08"}, {"id": "7rmai9m", "payee": "Spectrum", "note": "", "amount": 220, "cat": "utilities", "acct": "usbank", "start": "2026-08", "through": "2026-08"}, {"id": "cb4eb0n", "payee": "Netflix", "note": "", "amount": 19.99, "cat": "fun", "acct": "usbank", "start": "2026-08", "through": "2026-08"}, {"id": "tvt6nw7", "payee": "Apple Sub", "note": "", "amount": 13.49, "cat": "subs", "acct": "usbank", "start": "2026-08", "through": "2026-08"}, {"id": "t8lxhbh", "payee": "Apple Watches", "note": "", "amount": 41.49, "cat": "housing", "acct": "applecard", "start": "2026-08", "through": "2026-08"}, {"id": "6402bj5", "payee": "Apple Music", "note": "", "amount": 10.99, "cat": "fun", "acct": "applecard", "start": "2026-08", "through": "2026-08"}, {"id": "kfj16kf", "payee": "Apple Fitness", "note": "", "amount": 9.99, "cat": "subs", "acct": "applecard", "start": "2026-08", "through": "2026-08"}, {"id": "3huy07y", "payee": "iCloud", "note": "", "amount": 2.99, "cat": "subs", "acct": "applecard", "start": "2026-08", "through": "2026-08"}, {"id": "vhcotko", "payee": "7-11 Pass", "note": "", "amount": 10.77, "cat": "subs", "acct": "applecard", "start": "2026-08", "through": "2026-08"}, {"id": "dkvzjvr", "payee": "Claude", "note": "", "amount": 20, "cat": "subs", "acct": "applecard", "start": "2026-08", "through": "2026-08"}, {"id": "52qrud4", "payee": "Twitch Turbo", "note": "", "amount": 11.99, "cat": "housing", "acct": "capitalone", "start": "2026-08", "through": "2026-08"}, {"id": "uko6awx", "payee": "Google Sub", "note": "", "amount": 4.98, "cat": "subs", "acct": "capitalone", "start": "2026-08", "through": "2026-08"}, {"id": "8jq3az6", "payee": "HP Ink", "note": "", "amount": 9.19, "cat": "subs", "acct": "capitalone", "start": "2026-08", "through": "2026-08"}, {"id": "arfs8sp", "payee": "YouTube Premium", "note": "", "amount": 19.99, "cat": "fun", "acct": "capitalone", "start": "2026-08", "through": "2026-08"}, {"id": "mjjcj2m", "payee": "Shonen Jump", "note": "", "amount": 3.99, "cat": "fun", "acct": "amex", "start": "2026-08", "through": "2026-08"}, {"id": "i9phjba", "payee": "TMCC Salary", "note": "", "amount": 3639, "cat": "salary", "start": "2026-08", "through": "2026-08"}, {"id": "aaf1hd4", "payee": "Garmin", "note": "", "amount": 9.99, "cat": "subs", "acct": "capitalone", "start": "2026-08", "day": 11, "through": "2026-08"}], "lends": [{"id": "rso8sl9", "person": "Mom", "amount": 1150, "repaid": 0, "note": ""}, {"id": "68y02ro", "person": "Raven's Mom", "amount": 310, "repaid": 0, "note": ""}, {"id": "pnsbtb1", "person": "Codi", "amount": 360, "repaid": 0, "note": ""}, {"id": "jmti6ek", "person": "Raven", "amount": 1200, "repaid": 0, "note": ""}, {"id": "0y4hmbu", "person": "Hotel Reimbursement", "note": "", "people": [{"id": "g53fsnz", "name": "Raven (BLFC)", "owed": 188.45, "repaid": 0}, {"id": "j1aevkw", "name": "Raven (LVFC)", "owed": 216.67, "repaid": 0}, {"id": "5dlg60q", "name": "Tavern (BLFC)", "owed": 188.45, "repaid": 0}, {"id": "m3jggnq", "name": "Tavern (LVFC)", "owed": 216.67, "repaid": 0}, {"id": "71c3ym1", "name": "Myles (BLFC)", "owed": 188.45, "repaid": 0}]}], "loans": [{"id": "8k7jgcu", "name": "GLS (Toyota)", "start": 7492.24, "apr": 12.45, "opened": "2026-08", "estPay": 219.96}, {"id": "kjogsra", "name": "Discover Balance Transfer", "start": 1790, "apr": 0, "method": "simple", "opened": "2026-07", "estPay": 100}, {"id": "qadivmi", "name": "Elantra", "start": 17524.68, "apr": 7.39, "method": "simple", "opened": "2026-08", "estPay": 393.04}, {"id": "qox76pb", "name": "Wells Fargo Card", "start": 4772, "apr": 0, "method": "simple", "opened": "2026-08", "estPay": 200}, {"id": "y4g49px", "name": "TIAA", "start": 8050, "apr": 7.75, "method": "simple", "opened": "2026-08", "estPay": 164.52, "financed": 8050}], "txns": [{"id": "dewvsm0", "amount": 7.44, "payee": "Dutch Bros", "cat": "dining", "acct": "applecard", "date": "2026-08-26", "note": ""}, {"id": "fiuo4fg", "amount": 5, "payee": "Quik Stop", "cat": "other-out", "acct": "applecard", "date": "2026-08-25", "note": ""}, {"id": "iz9h1ul", "amount": 7.44, "payee": "Dutch Bros", "cat": "dining", "acct": "applecard", "date": "2026-08-25", "note": ""}, {"id": "mmtykhw", "amount": 50, "payee": "7-11", "cat": "other-out", "acct": "applecard", "date": "2026-08-24", "note": ""}, {"id": "jq7fu4n", "amount": 17.61, "payee": "Dutch Bros", "cat": "dining", "acct": "applecard", "date": "2026-08-24", "note": ""}, {"id": "wfgrxds", "amount": 14.6, "payee": "Wingstop", "cat": "dining", "acct": "applecard", "date": "2026-08-23", "note": ""}, {"id": "myvdpvm", "amount": 16.73, "payee": "Dutch Bros", "cat": "dining", "acct": "applecard", "date": "2026-08-23", "note": ""}, {"id": "sd5zngc", "amount": 35, "payee": "7-11", "cat": "other-out", "acct": "applecard", "date": "2026-08-22", "note": ""}, {"id": "5z7x6so", "amount": 9.25, "payee": "Steam", "cat": "fun", "acct": "capitalone", "date": "2026-08-03", "note": ""}, {"id": "6pzob83", "amount": 7.99, "payee": "Steam", "cat": "fun", "acct": "capitalone", "date": "2026-08-06", "note": ""}, {"id": "gfhp4yv", "amount": 4.49, "payee": "Other", "cat": "other-out", "acct": "capitalone", "date": "2026-08-10", "note": ""}, {"id": "sczmpgd", "amount": 4.49, "payee": "Steam", "cat": "fun", "acct": "capitalone", "date": "2026-08-10", "note": ""}, {"id": "dyy8xso", "amount": 14.99, "payee": "Jagex", "cat": "fun", "acct": "capitalone", "date": "2026-08-11", "note": ""}, {"id": "ee7n0tm", "amount": 7.19, "payee": "Steam", "cat": "fun", "acct": "capitalone", "date": "2026-08-13", "note": ""}, {"id": "hqb4cwg", "amount": 3.59, "payee": "Steam", "cat": "fun", "acct": "capitalone", "date": "2026-08-15", "note": ""}, {"id": "mmzddiy", "amount": 9.74, "payee": "Steam", "cat": "fun", "acct": "capitalone", "date": "2026-08-20", "note": ""}, {"id": "ibkpe66", "amount": 5, "payee": "Steam", "cat": "fun", "acct": "capitalone", "date": "2026-08-21", "note": ""}, {"id": "1z4diob", "amount": 75, "payee": "7-11", "cat": "other-out", "acct": "applecard", "date": "2026-08-01", "note": ""}, {"id": "ahqo02z", "amount": 9.82, "payee": "Dutch Bros", "cat": "dining", "acct": "applecard", "date": "2026-08-01", "note": ""}, {"id": "9anf5ro", "amount": 19.26, "payee": "Chevron", "cat": "other-out", "acct": "applecard", "date": "2026-08-01", "note": ""}, {"id": "pihjq72", "amount": 78.62, "payee": "Great America", "cat": "fun", "acct": "applecard", "date": "2026-08-01", "note": ""}, {"id": "467urly", "amount": 12, "payee": "Great America", "cat": "fun", "acct": "applecard", "date": "2026-08-01", "note": ""}, {"id": "lq59ji7", "amount": 6.57, "payee": "Great America", "cat": "fun", "acct": "applecard", "date": "2026-08-01", "note": ""}, {"id": "faqmfzm", "amount": 40.58, "payee": "Shell", "cat": "other-out", "acct": "applecard", "date": "2026-08-01", "note": ""}, {"id": "vt14jca", "amount": 20, "payee": "Claude", "cat": "other-out", "acct": "applecard", "date": "2026-08-04", "note": ""}, {"id": "ho83kwa", "amount": 20, "payee": "7-11", "cat": "other-out", "acct": "applecard", "date": "2026-08-04", "note": ""}, {"id": "fn6dz7c", "amount": 50, "payee": "7-11", "cat": "other-out", "acct": "applecard", "date": "2026-08-07", "note": ""}, {"id": "srvzxxc", "amount": 14.6, "payee": "Wingstop", "cat": "dining", "acct": "applecard", "date": "2026-08-07", "note": ""}, {"id": "qyvhkz6", "amount": 22.43, "payee": "McDonalds", "cat": "dining", "acct": "applecard", "date": "2026-08-11", "note": ""}, {"id": "7mpmln9", "amount": 35, "payee": "7-11", "cat": "other-out", "acct": "applecard", "date": "2026-08-11", "note": ""}, {"id": "dqqutg8", "amount": 10.77, "payee": "7-11", "cat": "other-out", "acct": "applecard", "date": "2026-08-11", "note": ""}, {"id": "rpb0iuo", "amount": 5, "payee": "7-11", "cat": "other-out", "acct": "applecard", "date": "2026-08-14", "note": ""}, {"id": "9s5adct", "amount": 21.96, "payee": "Uber", "cat": "transport", "acct": "applecard", "date": "2026-08-15", "note": ""}, {"id": "z835woj", "amount": 14, "payee": "Roar", "cat": "fun", "acct": "applecard", "date": "2026-08-15", "note": ""}, {"id": "fv82m5j", "amount": 19.77, "payee": "Uber", "cat": "transport", "acct": "applecard", "date": "2026-08-15", "note": ""}, {"id": "0ebr16w", "amount": 50, "payee": "7-11", "cat": "other-out", "acct": "applecard", "date": "2026-08-17", "note": ""}, {"id": "gbkoatm", "amount": 34.58, "payee": "Raleys", "cat": "groceries", "acct": "applecard", "date": "2026-08-21", "note": ""}, {"id": "ejgbyco", "amount": 13.68, "payee": "Raleys", "cat": "groceries", "acct": "applecard", "date": "2026-08-21", "note": ""}, {"id": "5mntdta", "amount": 8.65, "payee": "Amazon", "cat": "other-out", "acct": "usbank", "date": "2026-08-03", "note": ""}, {"id": "11zr0tc", "amount": 13.86, "payee": "Wendy's", "cat": "dining", "acct": "usbank", "date": "2026-08-03", "note": ""}, {"id": "2r621he", "amount": 14.5, "payee": "Wendy's", "cat": "dining", "acct": "usbank", "date": "2026-08-03", "note": ""}, {"id": "tw15azo", "amount": 33.5, "payee": "FasTrak", "cat": "transport", "acct": "usbank", "date": "2026-08-12", "note": ""}, {"id": "0nxaoyu", "amount": 14.82, "payee": "Wendy's", "cat": "dining", "acct": "usbank", "date": "2026-08-12", "note": ""}, {"id": "cmousf2", "amount": 12.28, "payee": "Roar", "cat": "fun", "acct": "usbank", "date": "2026-08-17", "note": ""}, {"id": "r55rwbc", "amount": 29.98, "payee": "Better Foods Deli", "cat": "dining", "acct": "usbank", "date": "2026-08-17", "note": ""}, {"id": "48rsizi", "amount": 15.27, "payee": "Baskin Robbins", "cat": "dining", "acct": "usbank", "date": "2026-08-17", "note": ""}, {"id": "4xl395r", "amount": 51.85, "payee": "DT Noodle", "cat": "dining", "acct": "usbank", "date": "2026-08-17", "note": ""}, {"id": "z6e0z4m", "amount": 10.96, "payee": "Taco Bell", "cat": "dining", "acct": "usbank", "date": "2026-08-17", "note": ""}, {"id": "g3n0cce", "amount": 7.65, "payee": "Dutch Bros", "cat": "dining", "acct": "usbank", "date": "2026-08-19", "note": ""}, {"id": "2o34dtr", "amount": 7.36, "payee": "Wendy's", "cat": "dining", "acct": "usbank", "date": "2026-08-20", "note": ""}, {"id": "12peepl", "amount": 250, "payee": "LVHF", "cat": "fun", "acct": "usbank", "date": "2026-08-24", "note": "Convention"}, {"id": "8jdgqy1", "amount": 65, "payee": "Raven", "cat": "other-out", "acct": "checking", "date": "2026-08-04", "note": "Gas"}, {"id": "1wsmp6p", "amount": 25, "payee": "Raven", "cat": "other-out", "acct": "checking", "date": "2026-08-05", "note": "Gas"}, {"id": "2kzz568", "amount": 563.24, "payee": "IRS", "cat": "other-out", "acct": "checking", "date": "2026-08-06", "note": ""}, {"id": "ps3yax7", "amount": 9.99, "payee": "Steam", "cat": "fun", "acct": "checking", "date": "2026-08-06", "note": "Games"}, {"id": "h5av6xq", "amount": 100, "payee": "Discover Balance Transfer", "cat": "loan", "acct": "checking", "date": "2026-08-06", "note": ""}, {"id": "c8m5x7a", "amount": 310, "payee": "Raven's Mom", "cat": "loan", "acct": "checking", "date": "2026-08-07", "note": "Loan"}, {"id": "q2fekfp", "amount": 360, "payee": "Codi", "cat": "loan", "acct": "checking", "date": "2026-08-11", "note": "Loan"}, {"id": "g0osxuh", "amount": 5, "payee": "Steam", "cat": "fun", "acct": "checking", "date": "2026-08-11", "note": "Games"}, {"id": "f6oc7dq", "amount": 3, "payee": "Raven", "cat": "other-out", "acct": "checking", "date": "2026-08-12", "note": "Gas"}, {"id": "37lu8s9", "amount": 110, "payee": "Dispensary", "cat": "fun", "acct": "checking", "date": "2026-08-13", "note": ""}, {"id": "3qqo2mi", "amount": 5, "payee": "Raven", "cat": "other-out", "acct": "checking", "date": "2026-08-14", "note": "Gas"}, {"id": "rb3wyk8", "amount": 10, "payee": "Codi", "cat": "other-out", "acct": "checking", "date": "2026-08-14", "note": "Gas"}, {"id": "jnrkjy9", "amount": 500, "payee": "Wells Fargo Card", "cat": "loan", "acct": "checking", "date": "2026-08-26", "note": "", "loan": "qox76pb"}, {"id": "5bm7b4l", "amount": 500, "payee": "Discover Balance Transfer", "cat": "loan", "acct": "checking", "date": "2026-08-26", "note": "", "loan": "kjogsra"}, {"id": "5b16lyb", "date": "2026-08-01", "amount": 21.23, "payee": "Verizon", "cat": "subs", "acct": "checking", "note": "", "recFrom": "mpq152r"}, {"id": "nvdupq0", "date": "2026-08-01", "amount": 50, "payee": "Apple Savings", "cat": "other-out", "acct": "checking", "note": "", "recFrom": "sh4jybs"}, {"id": "f519k6u", "date": "2026-08-01", "amount": 2340, "payee": "Rent", "cat": "housing", "acct": "checking", "note": "", "recFrom": "b69kzkl"}, {"id": "c9zcm3z", "date": "2026-08-01", "amount": 11.58, "payee": "Amazon Prime", "cat": "subs", "acct": "checking", "note": "", "recFrom": "gdn9jko"}, {"id": "7fohocb", "date": "2026-08-01", "amount": 219.96, "payee": "GLS (Toyota)", "cat": "loan", "acct": "checking", "note": "", "recFrom": "5km2h6h"}, {"id": "2mfqkfy", "date": "2026-08-01", "amount": 100, "payee": "Discover Balance Transfer", "cat": "loan", "acct": "checking", "note": "", "recFrom": "og05ngv"}, {"id": "i321kx0", "date": "2026-08-01", "amount": 200, "payee": "Wells Fargo Card", "cat": "loan", "acct": "checking", "note": "", "recFrom": "l1whrfi"}, {"id": "myeeyjj", "date": "2026-08-01", "amount": 393.05, "payee": "Elantra", "cat": "housing", "acct": "checking", "note": "", "recFrom": "1hpggfn"}, {"id": "oks7ab9", "date": "2026-08-01", "amount": 262.59, "payee": "Insurance", "cat": "utilities", "acct": "usbank", "note": ""}, {"id": "njusk3r", "date": "2026-08-01", "amount": 220, "payee": "Spectrum", "cat": "utilities", "acct": "usbank", "note": ""}, {"id": "kyjqw9p", "date": "2026-08-01", "amount": 19.99, "payee": "Netflix", "cat": "fun", "acct": "usbank", "note": "", "recFrom": "cb4eb0n"}, {"id": "qay17hi", "date": "2026-08-01", "amount": 13.49, "payee": "Apple Sub", "cat": "subs", "acct": "usbank", "note": "", "recFrom": "tvt6nw7"}, {"id": "cnr4106", "date": "2026-08-01", "amount": 41.49, "payee": "Apple Watches", "cat": "housing", "acct": "applecard", "note": "", "recFrom": "t8lxhbh"}, {"id": "c9fvpl1", "date": "2026-08-01", "amount": 10.99, "payee": "Apple Music", "cat": "fun", "acct": "applecard", "note": "", "recFrom": "6402bj5"}, {"id": "tphtjwt", "date": "2026-08-01", "amount": 9.99, "payee": "Apple Fitness", "cat": "subs", "acct": "applecard", "note": "", "recFrom": "kfj16kf"}, {"id": "xiyej2i", "date": "2026-08-01", "amount": 2.99, "payee": "iCloud", "cat": "subs", "acct": "applecard", "note": "", "recFrom": "3huy07y"}, {"id": "siyunry", "date": "2026-08-01", "amount": 10.77, "payee": "7-11 Pass", "cat": "subs", "acct": "applecard", "note": "", "recFrom": "vhcotko"}, {"id": "s41uoa2", "date": "2026-08-01", "amount": 20, "payee": "Claude", "cat": "subs", "acct": "applecard", "note": "", "recFrom": "dkvzjvr"}, {"id": "iiq1vj0", "date": "2026-08-01", "amount": 11.99, "payee": "Twitch Turbo", "cat": "housing", "acct": "capitalone", "note": "", "recFrom": "52qrud4"}, {"id": "8z9u1gt", "date": "2026-08-01", "amount": 4.98, "payee": "Google Sub", "cat": "subs", "acct": "capitalone", "note": "", "recFrom": "uko6awx"}, {"id": "jp7i09q", "date": "2026-08-01", "amount": 9.19, "payee": "HP Ink", "cat": "subs", "acct": "capitalone", "note": "", "recFrom": "8jq3az6"}, {"id": "j51tjuu", "date": "2026-08-01", "amount": 19.99, "payee": "YouTube Premium", "cat": "fun", "acct": "capitalone", "note": "", "recFrom": "arfs8sp"}, {"id": "i4e1pog", "date": "2026-08-01", "amount": 3.99, "payee": "Shonen Jump", "cat": "fun", "acct": "amex", "note": "", "recFrom": "mjjcj2m"}, {"id": "27kv1d1", "date": "2026-08-01", "amount": 3639, "payee": "TMCC Salary", "cat": "salary", "acct": "checking", "note": "", "recFrom": "i9phjba"}, {"id": "kre43bb", "date": "2026-08-11", "amount": 9.99, "payee": "Garmin", "cat": "subs", "acct": "capitalone", "note": "", "recFrom": "aaf1hd4"}], "symbol": "$", "theme": "vapor", "appTitle": "Ledger", "currency": "USD"};
+  var cats=EMBEDDED_BACKUP.cats||DEFAULT_CATS.slice(), accts=EMBEDDED_BACKUP.accts||DEFAULT_ACCTS.slice(),
+      recurring=EMBEDDED_BACKUP.recurring||[], lends=EMBEDDED_BACKUP.lends||[], loans=EMBEDDED_BACKUP.loans||[],
+      txns=EMBEDDED_BACKUP.txns||[], symbol=EMBEDDED_BACKUP.symbol||"$", month=monthOf(todayISO());
+  var theme=EMBEDDED_BACKUP.theme||"slip", appTitle=EMBEDDED_BACKUP.appTitle||"Ledger", currency=EMBEDDED_BACKUP.currency||"USD";
   try{
     var raw=localStorage.getItem(KEY);
     if(raw){var d=JSON.parse(raw); if(d.cats)cats=d.cats; if(d.accts)accts=d.accts; if(d.recurring)recurring=d.recurring; if(d.lends)lends=d.lends; if(d.loans)loans=d.loans; if(d.txns)txns=d.txns; if(d.symbol)symbol=d.symbol; if(d.theme)theme=d.theme; if(d.appTitle)appTitle=d.appTitle; if(d.currency)currency=d.currency;}
@@ -546,6 +563,19 @@
     var ln=null; for(var i=0;i<loans.length;i++)if(loans[i].id===loanId){ln=loans[i];break;}
     return (ln && ln.estPay>0) ? ln.estPay : 0;
   }
+  // for a loan linked to an account (credit-card-style): every purchase made
+  // on that account raises what's owed, exactly like a real card. Bucketed by
+  // month so it can be folded into the same walk that applies interest/payments.
+  function chargesByMonth(acctId){
+    var by={};
+    if(!acctId) return by;
+    txns.forEach(function(t){
+      if(t.acct===acctId && catType(t.cat)==="out"){
+        var m=monthOf(t.date); by[m]=(by[m]||0)+effAmt(t);
+      }
+    });
+    return by;
+  }
   // walk the balance forward month by month up to the current month, returning
   // today's true outstanding balance. Two accrual methods:
   //   simple   — interest is charged on principal only. Each payment covers that
@@ -562,27 +592,31 @@
     var open=ln.opened || monthOf(todayISO());
     var cur=monthOf(todayISO());
     var byMonth=loanPaymentsByMonth(ln.id);
+    var byCharge=chargesByMonth(ln.chargeAcct);
     var compound=(ln.method==="compound");
     var arrears=0;                     // unpaid interest held aside (simple only)
-    // opening-month payment applies before any interest accrues
-    principal=principal-(byMonth[open]||0); if(principal<0)principal=0;
+    // opening-month payments and charges apply before any interest accrues
+    principal=principal-(byMonth[open]||0)+(byCharge[open]||0); if(principal<0)principal=0;
     var m=monthAfter(open), guard=0;
     while(m<=cur && guard<1200){
       guard++;
       var interest=(principal+ (compound?0:0))*mRate;   // interest on principal
       var pay=byMonth[m]||0;
+      var charge=byCharge[m]||0;
       if(compound){
-        // interest capitalizes, then payment reduces the whole balance
-        principal=principal+interest-pay;
+        // interest capitalizes, then charges add and payment reduces the whole balance
+        principal=principal+interest+charge-pay;
         if(principal<0)principal=0;
       }else{
-        // payment covers arrears, then this month's interest, then principal
+        // payment covers arrears, then this month's interest, then principal;
+        // charges add to principal directly, same as a real card statement
         var owedInterest=arrears+interest;
         if(pay>=owedInterest){
           principal=principal-(pay-owedInterest); arrears=0;
         }else{
           arrears=owedInterest-pay;
         }
+        principal=principal+charge;
         if(principal<0)principal=0;
       }
       m=monthAfter(m);
@@ -683,6 +717,9 @@
   // two independent panes (spending / income), each with its own expand state
   var txnsExpandedOut=false, txnsExpandedIn=false;
   var expandedGroupsOut={}, expandedGroupsIn={};
+  // whole-pane collapse — a second way to collapse besides the bottom
+  // show-more control, toggled from the "Spending"/"Income" header itself
+  var paneCollapsedOut=false, paneCollapsedIn=false;
   // real filters — narrow which transactions the panes show, replacing sorting
   var filterCat="", filterAcct="";
 
@@ -769,9 +806,9 @@
         di.addEventListener("input",function(){draft.date=this.value}); fd.appendChild(di); fd.style.flex="1 1 140px";
         g1.appendChild(fa); g1.appendChild(fd); er.appendChild(g1);
 
-        // row 2: payee + category
+        // row 2: payee/payer + category
         var g2=document.createElement("div"); g2.style.cssText="display:flex;gap:8px;margin-bottom:8px";
-        var fp=field("Payee"); var pi=document.createElement("input"); pi.value=draft.payee; pi.setAttribute("list","payees"); pi.style.width="100%";
+        var fp=field(isIn?"Payer":"Payee"); var pi=document.createElement("input"); pi.value=draft.payee; pi.setAttribute("list","payees"); pi.style.width="100%";
         pi.addEventListener("input",function(){draft.payee=this.value}); fp.appendChild(pi); fp.style.flex="1 1 150px";
         var fc=field("Category"); var ci=document.createElement("select"); ci.style.width="100%";
         groupedCatOptions(ci,draft.cat);
@@ -803,6 +840,7 @@
         var editLinkMode=(catType(t.cat)==="in") ? (t.lendRepay?"linked":"none") : (t.loan?"linked":"none");
         function syncLinkUI(){
           var curIsIn=catType(draft.cat)==="in";
+          fp.firstChild.textContent = curIsIn ? "Payer" : "Payee";
           var relevant=curIsIn ? (lends.length>0) : (loans.length>0);
           linkWrap.classList.toggle("hide", !relevant);
           if(!relevant){ editLinkMode="none"; draft.loan=""; draft.lendRepay=""; return; }
@@ -1024,6 +1062,10 @@
     renderTxnPane("out");
     renderTxnPane("in");
     $("clearFilters").classList.toggle("hide", !(filterCat||filterAcct));
+    $("txnListOut").classList.toggle("hide", paneCollapsedOut);
+    $("txnListIn").classList.toggle("hide", paneCollapsedIn);
+    $("paneChevOut").textContent = paneCollapsedOut ? "▸" : "▾";
+    $("paneChevIn").textContent = paneCollapsedIn ? "▸" : "▾";
 
     // breakdown
     var m={};
@@ -1347,6 +1389,7 @@
     // income skips the account picker; each mode gets its own linking option —
     // spending can pay down a loan, income can be a repayment on money owed to you
     $("acct").classList.toggle("hide",!out);
+    $("payee").placeholder = out ? "Payee" : "Payer";
 
     var linkRelevant = out ? (loans.length>0) : (lends.length>0);
     $("linkRow").classList.toggle("hide", !linkRelevant);
@@ -1404,6 +1447,8 @@
   $("date").addEventListener("change",fillCatSelect);
 
   // ---- transaction filters ----
+  $("paneHeadOut").onclick=function(){ paneCollapsedOut=!paneCollapsedOut; render(); };
+  $("paneHeadIn").onclick=function(){ paneCollapsedIn=!paneCollapsedIn; render(); };
   $("filterCat").addEventListener("change",function(){ filterCat=this.value; render(); });
   $("filterAcct").addEventListener("change",function(){ filterAcct=this.value; render(); });
   $("clearFilters").onclick=function(){ filterCat=""; filterAcct=""; render(); };
@@ -2120,6 +2165,26 @@
       });
       mS.addEventListener("change",function(){ln.method=this.value;save();render()});
       r2b.appendChild(mL); r2b.appendChild(mS); block.appendChild(r2b);
+      // link to an account: purchases on it raise the balance automatically,
+      // like a real credit card. Optional — most loans (mortgage, auto, personal)
+      // don't have a spending account behind them at all.
+      var r2d=document.createElement("div"); r2d.style.marginBottom="6px";
+      var caL=document.createElement("div"); caL.textContent="Card account (optional)"; caL.style.cssText="font-size:12px;color:var(--sub);margin-bottom:2px";
+      var caS=document.createElement("select"); caS.style.cssText="width:100%;padding:8px 8px";
+      var caNone=document.createElement("option"); caNone.value=""; caNone.textContent="— none — balance only changes via payments";
+      if(!ln.chargeAcct)caNone.selected=true; caS.appendChild(caNone);
+      accts.forEach(function(a){
+        var o=document.createElement("option"); o.value=a.id; o.textContent=a.name+(a.kind==="card"?"":" (bank)");
+        if(a.id===ln.chargeAcct)o.selected=true; caS.appendChild(o);
+      });
+      caS.addEventListener("change",function(){ln.chargeAcct=this.value||undefined;save();render()});
+      r2d.appendChild(caL); r2d.appendChild(caS);
+      if(ln.chargeAcct){
+        var caNote=document.createElement("div"); caNote.style.cssText="font-size:13px;color:var(--sub);margin-top:3px";
+        caNote.textContent="Every purchase on "+acctName(ln.chargeAcct)+" adds to this balance automatically.";
+        r2d.appendChild(caNote);
+      }
+      block.appendChild(r2d);
       // expected monthly payment (used for projection until a recurring bill is tagged)
       var r2c=document.createElement("div"); r2c.style.marginBottom="6px";
       var epL=document.createElement("div"); epL.textContent="Expected monthly payment"; epL.style.cssText="font-size:12px;color:var(--sub);margin-bottom:2px";
@@ -2154,6 +2219,28 @@
       }else{
         info.textContent=fmt(loanRemaining(ln))+" remaining · add an expected payment or tag a recurring bill.";
       }
+      block.appendChild(info);
+      // manual override — for anything the automatic tracking can't see:
+      // an annual fee, a correction against your real statement, interest
+      // capitalizing outside what's modeled, or a private loan someone added to
+      var ovWrap=document.createElement("div"); ovWrap.style.cssText="display:flex;gap:6px;align-items:center;margin-top:8px";
+      var ovPos=document.createElement("div"); ovPos.style.cssText="position:relative;flex:1";
+      var ovPre=document.createElement("span"); ovPre.textContent=symbol; ovPre.style.cssText="position:absolute;left:9px;top:9px;color:var(--sub);font-size:15px";
+      var ovI=document.createElement("input"); ovI.type="number"; ovI.min="0"; ovI.step="0.01"; ovI.className="tnum";
+      ovI.placeholder="update current balance to…"; ovI.style.cssText="width:100%;padding:8px 8px 8px 20px";
+      var ovBtn=document.createElement("button"); ovBtn.className="ghost"; ovBtn.textContent="Update";
+      ovBtn.onclick=function(){
+        var v=parseFloat(ovI.value);
+        if(!(v>=0)){ ovI.style.borderColor="var(--spend)"; ovI.focus(); return; }
+        var cur=loanRemaining(ln);
+        if(!confirm("Set "+(ln.name||"this loan")+"'s balance to "+fmt(v)+" as of "+monthLabel(monthOf(todayISO()))+"?\n\nCurrently tracked at "+fmt(cur)+". This resets the tracking starting point — past payment history stays in your transactions, but the balance calculation restarts from this new number going forward."))return;
+        ln.start=v; ln.opened=monthOf(todayISO());
+        ovI.value="";
+        save(); render(); renderDebtEdit();
+      };
+      ovPos.appendChild(ovPre); ovPos.appendChild(ovI);
+      ovWrap.appendChild(ovPos); ovWrap.appendChild(ovBtn);
+      block.appendChild(ovWrap);
       block.appendChild(info);
       box.appendChild(block);
     });
