@@ -784,13 +784,21 @@
   var editTxn=null;         // id of the row currently open in the full editor
   var COLLAPSED_N=6;         // groups shown before a "show more" is needed, per pane
   // two independent panes (spending / income), each with its own expand state
-  var txnsExpandedOut=false, txnsExpandedIn=false;
-  var expandedGroupsOut={}, expandedGroupsIn={};
-  // whole-pane collapse — a second way to collapse besides the bottom
-  // show-more control, toggled from the "Spending"/"Income" header itself
-  var paneCollapsedOut=false, paneCollapsedIn=false;
+  // per-pane state, consolidated into one object keyed by "out"/"in" rather
+  // than parallel Out/In variables — resetting a pane is one line here instead
+  // of remembering every individual variable name at every call site (that
+  // exact gap is what broke month navigation earlier)
+  var paneState = {
+    out: { expanded:false, groups:{}, collapsed:false },
+    in:  { expanded:false, groups:{}, collapsed:false }
+  };
+  function resetPaneState(){
+    paneState.out = { expanded:false, groups:{}, collapsed:paneState.out.collapsed };
+    paneState.in  = { expanded:false, groups:{}, collapsed:paneState.in.collapsed  };
+  }
   // real filters — narrow which transactions the panes show, replacing sorting
   var filterCat="", filterAcct="";
+  var mt=[];   // current month's transactions — set once per render(), read by every section below it
 
   // recurring items still active as of a given month — used to preview what
   // will carry forward when browsing into the current/future month before
@@ -827,11 +835,33 @@
   }
 
   function render(){
-    // month
     $("monthLabel").textContent=monthLabel(month);
-    // month txns
-    var mt=txns.filter(function(t){return monthOf(t.date)===month});
-    // totals
+    mt=txns.filter(function(t){return monthOf(t.date)===month});
+    renderHero();
+    syncFilterOptions();
+    renderTxnPane("out");
+    renderTxnPane("in");
+    $("clearFilters").classList.toggle("hide", !(filterCat||filterAcct));
+    $("txnListOut").classList.toggle("hide", paneState.out.collapsed);
+    $("txnListIn").classList.toggle("hide", paneState.in.collapsed);
+    $("paneChevOut").textContent = paneState.out.collapsed ? "▸" : "▾";
+    $("paneChevIn").textContent = paneState.in.collapsed ? "▸" : "▾";
+
+    renderBreakdown();
+    renderByAccount();
+    renderLoansSection();
+    renderLendsSection();
+    // currency + symbol prefix
+    $("symPre").textContent=symbol;
+    var curBtn=$("currencyBtn");
+    if(curBtn) curBtn.textContent=currency+" "+symbol;
+
+    // keep the add-form's loan-payment row in sync (loans can change via the drawer)
+    if(typeof applyMode==="function")applyMode();
+  }
+
+  function renderHero(){
+    $("monthLabel").textContent=monthLabel(month);
     var inc=0,out=0;
     mt.forEach(function(t){ if(catType(t.cat)==="in") inc+=t.amount; else out+=effAmt(t); });
     // future months never have recurring-generated transactions yet (those
@@ -858,297 +888,293 @@
     $("inBar").style.width=(inc/scale*100)+"%";
     $("outBar").style.width=(out/scale*100)+"%";
 
-    // builds one transaction row (edit form or display row) as a detached
-    // DOM node — the caller decides where it lands (flat, or nested under
-    // a payee group), so this is shared by both panes.
-    function buildTxnRow(t){
-      var isIn=catType(t.cat)==="in";
+  }
 
-      // ---- edit mode: full inline form ----
-      if(editTxn===t.id){
-        var er=document.createElement("div"); er.className="row"; er.style.display="block";
-        var draft={amount:t.amount,payee:t.payee||"",cat:t.cat,acct:t.acct||"",date:t.date,note:t.note||"",loan:t.loan||"",lendRepay:t.lendRepay||""};
+  // builds one transaction row (edit form or display row) as a detached
+  // DOM node — the caller decides where it lands (flat, or nested under
+  // a payee group), so this is shared by both panes.
+  function buildTxnRow(t){
+    var isIn=catType(t.cat)==="in";
 
-        function field(label){
-          var w=document.createElement("div");
-          var l=document.createElement("div"); l.textContent=label;
-          l.style.cssText="font-size:12px;letter-spacing:.06em;text-transform:uppercase;color:var(--sub);margin-bottom:3px;font-family:var(--mono)";
-          w.appendChild(l); return w;
-        }
+    // ---- edit mode: full inline form ----
+    if(editTxn===t.id){
+      var er=document.createElement("div"); er.className="row"; er.style.display="block";
+      var draft={amount:t.amount,payee:t.payee||"",cat:t.cat,acct:t.acct||"",date:t.date,note:t.note||"",loan:t.loan||"",lendRepay:t.lendRepay||""};
 
-        // row 1: amount + date
-        var g1=document.createElement("div"); g1.style.cssText="display:flex;gap:8px;margin-bottom:8px";
-        var fa=field("Amount"); var awrap=document.createElement("div"); awrap.style.cssText="position:relative";
-        var apre=document.createElement("span"); apre.textContent=symbol; apre.style.cssText="position:absolute;left:10px;top:11px;color:var(--sub);font-size:15px";
-        var ai=document.createElement("input"); ai.type="number"; ai.min="0"; ai.step="0.01"; ai.className="tnum";
-        ai.value=draft.amount; ai.style.cssText="width:100%;padding-left:22px";
-        ai.addEventListener("input",function(){draft.amount=this.value});
-        awrap.appendChild(apre); awrap.appendChild(ai); fa.appendChild(awrap); fa.style.flex="1 1 120px";
-        var fd=field("Date"); var di=document.createElement("input"); di.type="date"; di.value=draft.date; di.style.width="100%";
-        di.addEventListener("input",function(){draft.date=this.value}); fd.appendChild(di); fd.style.flex="1 1 140px";
-        g1.appendChild(fa); g1.appendChild(fd); er.appendChild(g1);
-
-        // row 2: payee/payer + category
-        var g2=document.createElement("div"); g2.style.cssText="display:flex;gap:8px;margin-bottom:8px";
-        var fp=field(isIn?"Payer":"Payee"); var pi=document.createElement("input"); pi.value=draft.payee; pi.setAttribute("list","payees"); pi.style.width="100%";
-        pi.addEventListener("input",function(){draft.payee=this.value}); fp.appendChild(pi); fp.style.flex="1 1 150px";
-        var fc=field("Category"); var ci=document.createElement("select"); ci.style.width="100%";
-        groupedCatOptions(ci,draft.cat);
-        ci.addEventListener("change",function(){draft.cat=this.value; syncLinkUI();});
-        fc.appendChild(ci); fc.style.flex="1 1 150px";
-        g2.appendChild(fp); g2.appendChild(fc); er.appendChild(g2);
-
-        // row 3: account + note
-        var g3=document.createElement("div"); g3.style.cssText="display:flex;gap:8px;margin-bottom:8px";
-        var fac=field("Account"); var aci=document.createElement("select"); aci.style.width="100%";
-        var ap=document.createElement("option"); ap.value=""; ap.textContent="Account…"; ap.disabled=true; if(!draft.acct)ap.selected=true; aci.appendChild(ap);
-        accts.forEach(function(a){var o=document.createElement("option");o.value=a.id;o.textContent=a.name;if(a.id===draft.acct)o.selected=true;aci.appendChild(o)});
-        aci.addEventListener("change",function(){draft.acct=this.value}); fac.appendChild(aci); fac.style.flex="1 1 140px";
-        var fn=field("Note"); var ni=document.createElement("input"); ni.value=draft.note; ni.placeholder="optional"; ni.style.width="100%";
-        ni.addEventListener("input",function(){draft.note=this.value}); fn.appendChild(ni); fn.style.flex="1 1 150px";
-        g3.appendChild(fac); g3.appendChild(fn); er.appendChild(g3);
-
-        // row 4: linking to a loan or a lend — a Regular/Linked toggle, not an
-        // always-visible dropdown. Starts expanded if this entry is already
-        // tagged, so editing a linked entry doesn't hide its own link.
-        var linkWrap=document.createElement("div"); linkWrap.style.marginBottom="10px";
-        var linkLabel=document.createElement("div"); linkLabel.textContent="Linked to";
-        linkLabel.style.cssText="font-size:10px;letter-spacing:.06em;text-transform:uppercase;color:var(--sub);margin-bottom:3px;font-family:var(--mono)";
-        var linkSegE=document.createElement("div"); linkSegE.className="seg";
-        var linkNoneBtn=document.createElement("button"); linkNoneBtn.type="button"; linkNoneBtn.textContent="Regular";
-        var linkYesBtn=document.createElement("button"); linkYesBtn.type="button";
-        linkSegE.appendChild(linkNoneBtn); linkSegE.appendChild(linkYesBtn);
-        var targetSel=document.createElement("select"); targetSel.style.cssText="width:100%;margin-top:8px";
-        var editLinkMode=(catType(t.cat)==="in") ? (t.lendRepay?"linked":"none") : (t.loan?"linked":"none");
-        function syncLinkUI(){
-          var curIsIn=catType(draft.cat)==="in";
-          fp.firstChild.textContent = curIsIn ? "Payer" : "Payee";
-          var relevant=curIsIn ? (lends.length>0) : (loans.length>0);
-          linkWrap.classList.toggle("hide", !relevant);
-          if(!relevant){ editLinkMode="none"; draft.loan=""; draft.lendRepay=""; return; }
-          linkYesBtn.textContent=curIsIn ? "Repayment" : "Pays down a loan";
-          linkNoneBtn.className=editLinkMode==="none" ? "on-neutral" : "";
-          linkYesBtn.className=editLinkMode==="linked" ? "on-neutral" : "";
-          if(curIsIn){
-            fillLendRepaySelect(targetSel, draft.lendRepay);
-            draft.loan="";
-          }else{
-            targetSel.innerHTML='<option value="">— choose —</option>';
-            loans.forEach(function(ln2){
-              var o=document.createElement("option"); o.value=ln2.id; o.textContent=ln2.name||"(unnamed loan)";
-              if(ln2.id===draft.loan)o.selected=true; targetSel.appendChild(o);
-            });
-            draft.lendRepay="";
-          }
-          targetSel.classList.toggle("hide", editLinkMode!=="linked");
-        }
-        linkNoneBtn.onclick=function(){ editLinkMode="none"; draft.loan=""; draft.lendRepay=""; syncLinkUI(); };
-        linkYesBtn.onclick=function(){ editLinkMode="linked"; syncLinkUI(); targetSel.focus(); };
-        targetSel.addEventListener("change",function(){
-          if(catType(draft.cat)==="in") draft.lendRepay=this.value; else draft.loan=this.value;
-        });
-        syncLinkUI();
-        linkWrap.appendChild(linkLabel); linkWrap.appendChild(linkSegE); linkWrap.appendChild(targetSel);
-        er.appendChild(linkWrap);
-
-        // recurring detach warning
-        if(t.recFrom){
-          var wn=document.createElement("div");
-          wn.textContent="This came from a recurring bill. Saving edits here unlinks just this entry — the bill keeps posting as before.";
-          wn.style.cssText="font-size:14px;color:var(--sub);margin-bottom:10px;line-height:1.45";
-          er.appendChild(wn);
-        }
-
-        // actions
-        var acts=document.createElement("div"); acts.style.cssText="display:flex;gap:8px;align-items:center";
-        var saveB=document.createElement("button"); saveB.className="addbtn"; saveB.textContent="Save"; saveB.style.padding="9px 18px";
-        saveB.onclick=function(){
-          var a=parseFloat(draft.amount);
-          if(!(a>0)){ ai.style.borderColor="var(--spend)"; ai.focus(); return; }
-          if(!draft.payee.trim()){ pi.style.borderColor="var(--spend)"; pi.focus(); return; }
-          if(!draft.acct){ aci.style.borderColor="var(--spend)"; aci.focus(); return; }
-          if(!confirm("Save these changes to this entry?"))return;
-          t.amount=a; t.payee=draft.payee.trim(); t.cat=draft.cat; t.acct=draft.acct; t.date=draft.date||t.date; t.note=draft.note.trim();
-          t.loan=(catType(t.cat)==="out"&&draft.loan)?draft.loan:undefined;
-          t.lendRepay=(catType(t.cat)==="in"&&draft.lendRepay)?draft.lendRepay:undefined;
-          if(t.recFrom)delete t.recFrom;   // this entry is now hand-edited, keep it that way
-          editTxn=null;
-          if(monthOf(t.date)!==month)month=monthOf(t.date);
-          save(); fillPayees(); render();
-        };
-        var cancelB=document.createElement("button"); cancelB.className="ghost"; cancelB.textContent="Cancel";
-        cancelB.onclick=function(){ editTxn=null; render(); };
-        var delB=document.createElement("button"); delB.className="ghost"; delB.textContent="Delete";
-        delB.style.marginLeft="auto"; delB.style.color="var(--spend)"; delB.style.borderColor="var(--spend)";
-        delB.onclick=function(){
-          if(!confirm("Delete this entry? This can't be undone."))return;
-          txns=txns.filter(function(x){return x.id!==t.id}); editTxn=null; save(); render();
-        };
-        acts.appendChild(saveB); acts.appendChild(cancelB); acts.appendChild(delB);
-        er.appendChild(acts);
-        return er;
+      function field(label){
+        var w=document.createElement("div");
+        var l=document.createElement("div"); l.textContent=label;
+        l.style.cssText="font-size:12px;letter-spacing:.06em;text-transform:uppercase;color:var(--sub);margin-bottom:3px;font-family:var(--mono)";
+        w.appendChild(l); return w;
       }
 
-      // ---- display row ----
-      var row=document.createElement("div"); row.className="row";
-      var left=document.createElement("div"); left.style.cssText="flex:1;min-width:0";
-      var nm=document.createElement("div"); nm.style.fontSize="16px";
-      nm.textContent=t.payee||catName(t.cat);
-      var meta=document.createElement("div"); meta.className="tnum"; meta.style.cssText="font-size:15px;color:var(--sub);font-weight:400";
-      var an=acctName(t.acct);
-      var loanNote=(!isIn&&t.loan)?(" · → "+loanName(t.loan)):"";
-      var lendNote=(isIn&&t.lendRepay)?(" · ← "+lendPersonName(t.lendRepay)):"";
-      var bits=[t.recFrom?"Monthly":t.date.slice(5)];
-      if(t.payee)bits.push(catName(t.cat));   // otherwise the title already says it
-      if(an)bits.push(an);
-      if(t.note)bits.push(t.note);
-      meta.textContent=bits.join(" · ")+loanNote+lendNote;
-      left.appendChild(nm); left.appendChild(meta);
-      var amt=document.createElement("div"); amt.className="tnum";
-      amt.style.cssText="font-size:19px;white-space:nowrap;color:"+(isIn?"var(--income)":"var(--ink)");
-      amt.textContent=(isIn?"+":"−")+fmt(effAmt(t));
-      var eb=document.createElement("button"); eb.className="del"; eb.textContent="✎"; eb.title="Edit";
-      eb.style.fontSize="15px";
-      eb.onclick=function(){ editTxn=t.id; render(); };
-      var db=document.createElement("button"); db.className="del"; db.textContent="×"; db.title="Delete";
-      db.onclick=function(){
-        if(!confirm("Delete this entry? This can't be undone."))return;
-        txns=txns.filter(function(x){return x.id!==t.id}); save(); render();
+      // row 1: amount + date
+      var g1=document.createElement("div"); g1.style.cssText="display:flex;gap:8px;margin-bottom:8px";
+      var fa=field("Amount"); var awrap=document.createElement("div"); awrap.style.cssText="position:relative";
+      var apre=document.createElement("span"); apre.textContent=symbol; apre.style.cssText="position:absolute;left:10px;top:11px;color:var(--sub);font-size:15px";
+      var ai=document.createElement("input"); ai.type="number"; ai.min="0"; ai.step="0.01"; ai.className="tnum";
+      ai.value=draft.amount; ai.style.cssText="width:100%;padding-left:22px";
+      ai.addEventListener("input",function(){draft.amount=this.value});
+      awrap.appendChild(apre); awrap.appendChild(ai); fa.appendChild(awrap); fa.style.flex="1 1 120px";
+      var fd=field("Date"); var di=document.createElement("input"); di.type="date"; di.value=draft.date; di.style.width="100%";
+      di.addEventListener("input",function(){draft.date=this.value}); fd.appendChild(di); fd.style.flex="1 1 140px";
+      g1.appendChild(fa); g1.appendChild(fd); er.appendChild(g1);
+
+      // row 2: payee/payer + category
+      var g2=document.createElement("div"); g2.style.cssText="display:flex;gap:8px;margin-bottom:8px";
+      var fp=field(isIn?"Payer":"Payee"); var pi=document.createElement("input"); pi.value=draft.payee; pi.setAttribute("list","payees"); pi.style.width="100%";
+      pi.addEventListener("input",function(){draft.payee=this.value}); fp.appendChild(pi); fp.style.flex="1 1 150px";
+      var fc=field("Category"); var ci=document.createElement("select"); ci.style.width="100%";
+      groupedCatOptions(ci,draft.cat);
+      ci.addEventListener("change",function(){draft.cat=this.value; syncLinkUI();});
+      fc.appendChild(ci); fc.style.flex="1 1 150px";
+      g2.appendChild(fp); g2.appendChild(fc); er.appendChild(g2);
+
+      // row 3: account + note
+      var g3=document.createElement("div"); g3.style.cssText="display:flex;gap:8px;margin-bottom:8px";
+      var fac=field("Account"); var aci=document.createElement("select"); aci.style.width="100%";
+      var ap=document.createElement("option"); ap.value=""; ap.textContent="Account…"; ap.disabled=true; if(!draft.acct)ap.selected=true; aci.appendChild(ap);
+      accts.forEach(function(a){var o=document.createElement("option");o.value=a.id;o.textContent=a.name;if(a.id===draft.acct)o.selected=true;aci.appendChild(o)});
+      aci.addEventListener("change",function(){draft.acct=this.value}); fac.appendChild(aci); fac.style.flex="1 1 140px";
+      var fn=field("Note"); var ni=document.createElement("input"); ni.value=draft.note; ni.placeholder="optional"; ni.style.width="100%";
+      ni.addEventListener("input",function(){draft.note=this.value}); fn.appendChild(ni); fn.style.flex="1 1 150px";
+      g3.appendChild(fac); g3.appendChild(fn); er.appendChild(g3);
+
+      // row 4: linking to a loan or a lend — a Regular/Linked toggle, not an
+      // always-visible dropdown. Starts expanded if this entry is already
+      // tagged, so editing a linked entry doesn't hide its own link.
+      var linkWrap=document.createElement("div"); linkWrap.style.marginBottom="10px";
+      var linkLabel=document.createElement("div"); linkLabel.textContent="Linked to";
+      linkLabel.style.cssText="font-size:10px;letter-spacing:.06em;text-transform:uppercase;color:var(--sub);margin-bottom:3px;font-family:var(--mono)";
+      var linkSegE=document.createElement("div"); linkSegE.className="seg";
+      var linkNoneBtn=document.createElement("button"); linkNoneBtn.type="button"; linkNoneBtn.textContent="Regular";
+      var linkYesBtn=document.createElement("button"); linkYesBtn.type="button";
+      linkSegE.appendChild(linkNoneBtn); linkSegE.appendChild(linkYesBtn);
+      var targetSel=document.createElement("select"); targetSel.style.cssText="width:100%;margin-top:8px";
+      var editLinkMode=(catType(t.cat)==="in") ? (t.lendRepay?"linked":"none") : (t.loan?"linked":"none");
+      function syncLinkUI(){
+        var curIsIn=catType(draft.cat)==="in";
+        fp.firstChild.textContent = curIsIn ? "Payer" : "Payee";
+        var relevant=curIsIn ? (lends.length>0) : (loans.length>0);
+        linkWrap.classList.toggle("hide", !relevant);
+        if(!relevant){ editLinkMode="none"; draft.loan=""; draft.lendRepay=""; return; }
+        linkYesBtn.textContent=curIsIn ? "Repayment" : "Pays down a loan";
+        linkNoneBtn.className=editLinkMode==="none" ? "on-neutral" : "";
+        linkYesBtn.className=editLinkMode==="linked" ? "on-neutral" : "";
+        if(curIsIn){
+          fillLendRepaySelect(targetSel, draft.lendRepay);
+          draft.loan="";
+        }else{
+          targetSel.innerHTML='<option value="">— choose —</option>';
+          loans.forEach(function(ln2){
+            var o=document.createElement("option"); o.value=ln2.id; o.textContent=ln2.name||"(unnamed loan)";
+            if(ln2.id===draft.loan)o.selected=true; targetSel.appendChild(o);
+          });
+          draft.lendRepay="";
+        }
+        targetSel.classList.toggle("hide", editLinkMode!=="linked");
+      }
+      linkNoneBtn.onclick=function(){ editLinkMode="none"; draft.loan=""; draft.lendRepay=""; syncLinkUI(); };
+      linkYesBtn.onclick=function(){ editLinkMode="linked"; syncLinkUI(); targetSel.focus(); };
+      targetSel.addEventListener("change",function(){
+        if(catType(draft.cat)==="in") draft.lendRepay=this.value; else draft.loan=this.value;
+      });
+      syncLinkUI();
+      linkWrap.appendChild(linkLabel); linkWrap.appendChild(linkSegE); linkWrap.appendChild(targetSel);
+      er.appendChild(linkWrap);
+
+      // recurring detach warning
+      if(t.recFrom){
+        var wn=document.createElement("div");
+        wn.textContent="This came from a recurring bill. Saving edits here unlinks just this entry — the bill keeps posting as before.";
+        wn.style.cssText="font-size:14px;color:var(--sub);margin-bottom:10px;line-height:1.45";
+        er.appendChild(wn);
+      }
+
+      // actions
+      var acts=document.createElement("div"); acts.style.cssText="display:flex;gap:8px;align-items:center";
+      var saveB=document.createElement("button"); saveB.className="addbtn"; saveB.textContent="Save"; saveB.style.padding="9px 18px";
+      saveB.onclick=function(){
+        var a=parseFloat(draft.amount);
+        if(!(a>0)){ ai.style.borderColor="var(--spend)"; ai.focus(); return; }
+        if(!draft.payee.trim()){ pi.style.borderColor="var(--spend)"; pi.focus(); return; }
+        if(!draft.acct){ aci.style.borderColor="var(--spend)"; aci.focus(); return; }
+        if(!confirm("Save these changes to this entry?"))return;
+        t.amount=a; t.payee=draft.payee.trim(); t.cat=draft.cat; t.acct=draft.acct; t.date=draft.date||t.date; t.note=draft.note.trim();
+        t.loan=(catType(t.cat)==="out"&&draft.loan)?draft.loan:undefined;
+        t.lendRepay=(catType(t.cat)==="in"&&draft.lendRepay)?draft.lendRepay:undefined;
+        if(t.recFrom)delete t.recFrom;   // this entry is now hand-edited, keep it that way
+        editTxn=null;
+        if(monthOf(t.date)!==month)month=monthOf(t.date);
+        save(); fillPayees(); render();
       };
-      row.appendChild(left); row.appendChild(amt); row.appendChild(eb); row.appendChild(db);
-      return row;
+      var cancelB=document.createElement("button"); cancelB.className="ghost"; cancelB.textContent="Cancel";
+      cancelB.onclick=function(){ editTxn=null; render(); };
+      var delB=document.createElement("button"); delB.className="ghost"; delB.textContent="Delete";
+      delB.style.marginLeft="auto"; delB.style.color="var(--spend)"; delB.style.borderColor="var(--spend)";
+      delB.onclick=function(){
+        if(!confirm("Delete this entry? This can't be undone."))return;
+        txns=txns.filter(function(x){return x.id!==t.id}); editTxn=null; save(); render();
+      };
+      acts.appendChild(saveB); acts.appendChild(cancelB); acts.appendChild(delB);
+      er.appendChild(acts);
+      return er;
     }
 
-    // renders one pane (spending or income): applies the category/account
-    // filters, groups by payee, and tracks its own independent expand state —
-    // opening a group in one pane never touches the other.
-    function renderTxnPane(pane){
-      var listEl=$(pane==="out"?"txnListOut":"txnListIn");
-      listEl.innerHTML="";
-      var items=mt.filter(function(t){
-        if(catType(t.cat)!==pane) return false;
-        if(filterCat && t.cat!==filterCat) return false;
-        if(filterAcct && t.acct!==filterAcct) return false;
-        return true;
-      });
-      var expandedFlag = pane==="out" ? txnsExpandedOut : txnsExpandedIn;
-      var expandedMap = pane==="out" ? expandedGroupsOut : expandedGroupsIn;
-      var hasFilter = !!(filterCat || filterAcct);
+    // ---- display row ----
+    var row=document.createElement("div"); row.className="row";
+    var left=document.createElement("div"); left.style.cssText="flex:1;min-width:0";
+    var nm=document.createElement("div"); nm.style.fontSize="16px";
+    nm.textContent=t.payee||catName(t.cat);
+    var meta=document.createElement("div"); meta.className="tnum"; meta.style.cssText="font-size:15px;color:var(--sub);font-weight:400";
+    var an=acctName(t.acct);
+    var loanNote=(!isIn&&t.loan)?(" · → "+loanName(t.loan)):"";
+    var lendNote=(isIn&&t.lendRepay)?(" · ← "+lendPersonName(t.lendRepay)):"";
+    var bits=[t.recFrom?"Monthly":t.date.slice(5)];
+    if(t.payee)bits.push(catName(t.cat));   // otherwise the title already says it
+    if(an)bits.push(an);
+    if(t.note)bits.push(t.note);
+    meta.textContent=bits.join(" · ")+loanNote+lendNote;
+    left.appendChild(nm); left.appendChild(meta);
+    var amt=document.createElement("div"); amt.className="tnum";
+    amt.style.cssText="font-size:19px;white-space:nowrap;color:"+(isIn?"var(--income)":"var(--ink)");
+    amt.textContent=(isIn?"+":"−")+fmt(effAmt(t));
+    var eb=document.createElement("button"); eb.className="del"; eb.textContent="✎"; eb.title="Edit";
+    eb.style.fontSize="15px";
+    eb.onclick=function(){ editTxn=t.id; render(); };
+    var db=document.createElement("button"); db.className="del"; db.textContent="×"; db.title="Delete";
+    db.onclick=function(){
+      if(!confirm("Delete this entry? This can't be undone."))return;
+      txns=txns.filter(function(x){return x.id!==t.id}); save(); render();
+    };
+    row.appendChild(left); row.appendChild(amt); row.appendChild(eb); row.appendChild(db);
+    return row;
+  }
 
-      if(items.length===0){
-        var e=document.createElement("div");
-        e.style.cssText="padding:24px;color:var(--sub);font-size:17px";
-        e.textContent = hasFilter ? "Nothing matches this filter." : ("Nothing logged for "+monthLabel(month)+".");
-        listEl.appendChild(e);
-        // forward-looking preview only — never shown when paging back into
-        // past months or while a filter is narrowing the view
-        if(!hasFilter && month>=monthOf(todayISO())){
-          var fc=forecastForMonth(month).filter(function(rt){ return (catType(rt.cat)==="in")===(pane==="in"); });
-          if(fc.length){
-            var fWrap=document.createElement("div");
-            fWrap.style.cssText="padding:0 24px 20px;border-top:1px solid var(--hair);padding-top:16px";
-            var fLab=document.createElement("div");
-            fLab.className="eyebrow"; fLab.style.marginBottom="8px";
-            fLab.textContent="Carries in automatically";
-            fWrap.appendChild(fLab);
-            fc.forEach(function(rt){
-              var isInc=catType(rt.cat)==="in";
-              var line=document.createElement("div");
-              line.style.cssText="display:flex;justify-content:space-between;font-size:15px;padding:4px 0";
-              var lname=document.createElement("span"); lname.style.color="var(--sub)";
-              lname.textContent=(rt.payee||"—")+" · "+catName(rt.cat);
-              var lamt=document.createElement("span"); lamt.className="tnum";
-              lamt.style.color=isInc?"var(--income)":"var(--ink)";
-              lamt.textContent=(isInc?"+":"−")+fmt(rt.amount);
-              line.appendChild(lname); line.appendChild(lamt); fWrap.appendChild(line);
-            });
-            listEl.appendChild(fWrap);
-          }
+
+  // renders one pane (spending or income): applies the category/account
+  // filters, groups by payee, and tracks its own independent expand state —
+  // opening a group in one pane never touches the other.
+  function renderTxnPane(pane){
+    var listEl=$(pane==="out"?"txnListOut":"txnListIn");
+    listEl.innerHTML="";
+    var items=mt.filter(function(t){
+      if(catType(t.cat)!==pane) return false;
+      if(filterCat && t.cat!==filterCat) return false;
+      if(filterAcct && t.acct!==filterAcct) return false;
+      return true;
+    });
+    var expandedFlag = paneState[pane].expanded;
+    var expandedMap = paneState[pane].groups;
+    var hasFilter = !!(filterCat || filterAcct);
+
+    if(items.length===0){
+      var e=document.createElement("div");
+      e.style.cssText="padding:24px;color:var(--sub);font-size:17px";
+      e.textContent = hasFilter ? "Nothing matches this filter." : ("Nothing logged for "+monthLabel(month)+".");
+      listEl.appendChild(e);
+      // forward-looking preview only — never shown when paging back into
+      // past months or while a filter is narrowing the view
+      if(!hasFilter && month>=monthOf(todayISO())){
+        var fc=forecastForMonth(month).filter(function(rt){ return (catType(rt.cat)==="in")===(pane==="in"); });
+        if(fc.length){
+          var fWrap=document.createElement("div");
+          fWrap.style.cssText="padding:0 24px 20px;border-top:1px solid var(--hair);padding-top:16px";
+          var fLab=document.createElement("div");
+          fLab.className="eyebrow"; fLab.style.marginBottom="8px";
+          fLab.textContent="Carries in automatically";
+          fWrap.appendChild(fLab);
+          fc.forEach(function(rt){
+            var isInc=catType(rt.cat)==="in";
+            var line=document.createElement("div");
+            line.style.cssText="display:flex;justify-content:space-between;font-size:15px;padding:4px 0";
+            var lname=document.createElement("span"); lname.style.color="var(--sub)";
+            lname.textContent=(rt.payee||"—")+" · "+catName(rt.cat);
+            var lamt=document.createElement("span"); lamt.className="tnum";
+            lamt.style.color=isInc?"var(--income)":"var(--ink)";
+            lamt.textContent=(isInc?"+":"−")+fmt(rt.amount);
+            line.appendChild(lname); line.appendChild(lamt); fWrap.appendChild(line);
+          });
+          listEl.appendChild(fWrap);
         }
+      }
+      return;
+    }
+
+    // group by payee (category name as a fallback bucket for entries with
+    // no payee), always in a fixed alphabetical order — sorting was
+    // replaced by the filters above, so there's no user-facing order option
+    var groupMap={}, groupOrder=[];
+    items.forEach(function(t){
+      var key=(t.payee&&t.payee.trim()) ? ("p:"+t.payee.trim().toLowerCase()) : ("c:"+t.cat);
+      if(!groupMap[key]){ groupMap[key]={key:key, title:(t.payee||catName(t.cat)), items:[]}; groupOrder.push(key); }
+      groupMap[key].items.push(t);
+    });
+    var groups=groupOrder.map(function(k){ return groupMap[k]; });
+    groups.forEach(function(g){
+      g.items.sort(function(a,b){return a.date<b.date?1:-1});
+      var net=0; g.items.forEach(function(t){ net += (catType(t.cat)==="in"?t.amount:-effAmt(t)); });
+      g.net=net; g.latestDate=g.items[0].date;
+    });
+    groups.sort(function(a,b){
+      var an=a.title.toLowerCase(), bn=b.title.toLowerCase();
+      if(an<bn)return -1; if(an>bn)return 1;
+      return a.latestDate<b.latestDate?1:-1;
+    });
+
+    var collapsed = !expandedFlag && groups.length>COLLAPSED_N;
+    var shownGroups = collapsed ? groups.slice(0,COLLAPSED_N) : groups;
+    shownGroups.forEach(function(g){
+      if(g.items.length===1){
+        // a payee with just one entry this month — no point nesting it
+        listEl.appendChild(buildTxnRow(g.items[0]));
         return;
       }
-
-      // group by payee (category name as a fallback bucket for entries with
-      // no payee), always in a fixed alphabetical order — sorting was
-      // replaced by the filters above, so there's no user-facing order option
-      var groupMap={}, groupOrder=[];
-      items.forEach(function(t){
-        var key=(t.payee&&t.payee.trim()) ? ("p:"+t.payee.trim().toLowerCase()) : ("c:"+t.cat);
-        if(!groupMap[key]){ groupMap[key]={key:key, title:(t.payee||catName(t.cat)), items:[]}; groupOrder.push(key); }
-        groupMap[key].items.push(t);
-      });
-      var groups=groupOrder.map(function(k){ return groupMap[k]; });
-      groups.forEach(function(g){
-        g.items.sort(function(a,b){return a.date<b.date?1:-1});
-        var net=0; g.items.forEach(function(t){ net += (catType(t.cat)==="in"?t.amount:-effAmt(t)); });
-        g.net=net; g.latestDate=g.items[0].date;
-      });
-      groups.sort(function(a,b){
-        var an=a.title.toLowerCase(), bn=b.title.toLowerCase();
-        if(an<bn)return -1; if(an>bn)return 1;
-        return a.latestDate<b.latestDate?1:-1;
-      });
-
-      var collapsed = !expandedFlag && groups.length>COLLAPSED_N;
-      var shownGroups = collapsed ? groups.slice(0,COLLAPSED_N) : groups;
-      shownGroups.forEach(function(g){
-        if(g.items.length===1){
-          // a payee with just one entry this month — no point nesting it
-          listEl.appendChild(buildTxnRow(g.items[0]));
-          return;
-        }
-        var isExpanded=!!expandedMap[g.key];
-        var hrow=document.createElement("div"); hrow.className="row"; hrow.style.cursor="pointer";
-        var hleft=document.createElement("div"); hleft.style.cssText="flex:1;min-width:0;display:flex;align-items:center;gap:8px";
-        var chev=document.createElement("span"); chev.textContent=isExpanded?"▾":"▸";
-        chev.style.cssText="color:var(--sub);font-size:13px;flex:0 0 auto";
-        var hnm=document.createElement("div"); hnm.style.cssText="flex:1;min-width:0";
-        var htitle=document.createElement("div"); htitle.style.fontSize="16px"; htitle.textContent=g.title;
-        var hmeta=document.createElement("div"); hmeta.className="tnum";
-        hmeta.style.cssText="font-size:15px;color:var(--sub);font-weight:400";
-        hmeta.textContent=g.items.length+" entries";
-        hnm.appendChild(htitle); hnm.appendChild(hmeta);
-        hleft.appendChild(chev); hleft.appendChild(hnm);
-        var hamt=document.createElement("div"); hamt.className="tnum";
-        hamt.style.cssText="font-size:19px;white-space:nowrap;color:"+(g.net<0?"var(--ink)":"var(--income)");
-        hamt.textContent=(g.net<0?"−":"+")+fmt(Math.abs(g.net));
-        hrow.appendChild(hleft); hrow.appendChild(hamt);
-        hrow.onclick=function(){ expandedMap[g.key]=!expandedMap[g.key]; render(); };
-        listEl.appendChild(hrow);
-        if(isExpanded){
-          g.items.forEach(function(t){
-            var node=buildTxnRow(t);
-            node.style.paddingLeft="30px";
-            node.style.background="var(--wash)";
-            listEl.appendChild(node);
-          });
-        }
-      });
-      // expand / collapse footer — only when this pane overflows the cap
-      if(groups.length>COLLAPSED_N){
-        var foot=document.createElement("button");
-        foot.style.cssText="width:100%;border:none;border-top:1px solid var(--hair);background:transparent;"+
-          "padding:12px;font-family:var(--mono);font-size:13px;letter-spacing:.1em;text-transform:uppercase;"+
-          "color:var(--sub);cursor:pointer";
-        foot.textContent = collapsed ? ("Show "+(groups.length-COLLAPSED_N)+" more") : "Show less";
-        foot.onmouseover=function(){this.style.color="var(--ink)"};
-        foot.onmouseout=function(){this.style.color="var(--sub)"};
-        foot.onclick=function(){
-          if(pane==="out") txnsExpandedOut=!txnsExpandedOut; else txnsExpandedIn=!txnsExpandedIn;
-          render();
-        };
-        listEl.appendChild(foot);
+      var isExpanded=!!expandedMap[g.key];
+      var hrow=document.createElement("div"); hrow.className="row"; hrow.style.cursor="pointer";
+      var hleft=document.createElement("div"); hleft.style.cssText="flex:1;min-width:0;display:flex;align-items:center;gap:8px";
+      var chev=document.createElement("span"); chev.textContent=isExpanded?"▾":"▸";
+      chev.style.cssText="color:var(--sub);font-size:13px;flex:0 0 auto";
+      var hnm=document.createElement("div"); hnm.style.cssText="flex:1;min-width:0";
+      var htitle=document.createElement("div"); htitle.style.fontSize="16px"; htitle.textContent=g.title;
+      var hmeta=document.createElement("div"); hmeta.className="tnum";
+      hmeta.style.cssText="font-size:15px;color:var(--sub);font-weight:400";
+      hmeta.textContent=g.items.length+" entries";
+      hnm.appendChild(htitle); hnm.appendChild(hmeta);
+      hleft.appendChild(chev); hleft.appendChild(hnm);
+      var hamt=document.createElement("div"); hamt.className="tnum";
+      hamt.style.cssText="font-size:19px;white-space:nowrap;color:"+(g.net<0?"var(--ink)":"var(--income)");
+      hamt.textContent=(g.net<0?"−":"+")+fmt(Math.abs(g.net));
+      hrow.appendChild(hleft); hrow.appendChild(hamt);
+      hrow.onclick=function(){ expandedMap[g.key]=!expandedMap[g.key]; render(); };
+      listEl.appendChild(hrow);
+      if(isExpanded){
+        g.items.forEach(function(t){
+          var node=buildTxnRow(t);
+          node.style.paddingLeft="30px";
+          node.style.background="var(--wash)";
+          listEl.appendChild(node);
+        });
       }
+    });
+    // expand / collapse footer — only when this pane overflows the cap
+    if(groups.length>COLLAPSED_N){
+      var foot=document.createElement("button");
+      foot.style.cssText="width:100%;border:none;border-top:1px solid var(--hair);background:transparent;"+
+        "padding:12px;font-family:var(--mono);font-size:13px;letter-spacing:.1em;text-transform:uppercase;"+
+        "color:var(--sub);cursor:pointer";
+      foot.textContent = collapsed ? ("Show "+(groups.length-COLLAPSED_N)+" more") : "Show less";
+      foot.onmouseover=function(){this.style.color="var(--ink)"};
+      foot.onmouseout=function(){this.style.color="var(--sub)"};
+      foot.onclick=function(){
+        if(pane==="out") paneState.out.expanded=!paneState.out.expanded; else paneState.in.expanded=!paneState.in.expanded;
+        render();
+      };
+      listEl.appendChild(foot);
     }
-    syncFilterOptions();
-    renderTxnPane("out");
-    renderTxnPane("in");
-    $("clearFilters").classList.toggle("hide", !(filterCat||filterAcct));
-    $("txnListOut").classList.toggle("hide", paneCollapsedOut);
-    $("txnListIn").classList.toggle("hide", paneCollapsedIn);
-    $("paneChevOut").textContent = paneCollapsedOut ? "▸" : "▾";
-    $("paneChevIn").textContent = paneCollapsedIn ? "▸" : "▾";
+  }
 
+  function renderBreakdown(){
     // breakdown — every category, both directions, since this now covers
     // "by category" rather than spending only
     var m={}, byPayeeCat={};
@@ -1190,6 +1216,9 @@
       bg.appendChild(bar); w.appendChild(head); w.appendChild(bg); bd.appendChild(w);
     });
 
+  }
+
+  function renderByAccount(){
     // by account
     var am={};
     var accCat={};       // per-account spending by category, for the segmented mini-bar below
@@ -1258,6 +1287,9 @@
       as.appendChild(block);
     });
 
+  }
+
+  function renderLoansSection(){
     // loan balances (starting balance minus payments logged to its category)
     var dw=$("debtWrap"), dsum=$("debtSummary");
     if(loans.length===0){ dw.classList.add("hide"); }
@@ -1371,6 +1403,9 @@
       });
     }
 
+  }
+
+  function renderLendsSection(){
     // lent out (owed to you) — independent of budget totals
     var lendW=$("lendWrap"), lsm=$("lendSummary");
     if(lends.length===0){ lendW.classList.add("hide"); }
@@ -1428,13 +1463,6 @@
       lsm.appendChild(tot);
     }
 
-    // currency + symbol prefix
-    $("symPre").textContent=symbol;
-    var curBtn=$("currencyBtn");
-    if(curBtn) curBtn.textContent=currency+" "+symbol;
-
-    // keep the add-form's loan-payment row in sync (loans can change via the drawer)
-    if(typeof applyMode==="function")applyMode();
   }
 
   function fillCatSelect(){
@@ -1555,15 +1583,15 @@
   $("date").addEventListener("change",fillCatSelect);
 
   // ---- transaction filters ----
-  $("paneHeadOut").onclick=function(){ paneCollapsedOut=!paneCollapsedOut; render(); };
-  $("paneHeadIn").onclick=function(){ paneCollapsedIn=!paneCollapsedIn; render(); };
+  $("paneHeadOut").onclick=function(){ paneState.out.collapsed=!paneState.out.collapsed; render(); };
+  $("paneHeadIn").onclick=function(){ paneState.in.collapsed=!paneState.in.collapsed; render(); };
   $("filterCat").addEventListener("change",function(){ filterCat=this.value; render(); });
   $("filterAcct").addEventListener("change",function(){ filterAcct=this.value; render(); });
   $("clearFilters").onclick=function(){ filterCat=""; filterAcct=""; render(); };
 
   // ---- month nav ----
-  $("prevM").onclick=function(){month=monthBefore(month);txnsExpandedOut=false;txnsExpandedIn=false;expandedGroupsOut={};expandedGroupsIn={};render()};
-  $("nextM").onclick=function(){month=monthAfter(month);txnsExpandedOut=false;txnsExpandedIn=false;expandedGroupsOut={};expandedGroupsIn={};render()};
+  $("prevM").onclick=function(){month=monthBefore(month);resetPaneState();render()};
+  $("nextM").onclick=function(){month=monthAfter(month);resetPaneState();render()};
 
   // ---- currency ----
   function round2(n){ return Math.round(n*100)/100; }
