@@ -117,7 +117,7 @@
 
   <!-- hero -->
   <div class="card hero" style="padding:24px 26px;margin-bottom:16px">
-    <div class="eyebrow">Net this month</div>
+    <div class="eyebrow" id="netLabel">Net this month</div>
     <div class="net" id="net" style="margin-top:10px"></div>
     <div class="flow">
       <span class="flow-k">In</span>
@@ -834,6 +834,19 @@
     // totals
     var inc=0,out=0;
     mt.forEach(function(t){ if(catType(t.cat)==="in") inc+=t.amount; else out+=effAmt(t); });
+    // future months never have recurring-generated transactions yet (those
+    // only post up through the real current month) — so for a month that
+    // hasn't arrived, add what's scheduled on top of anything logged by hand,
+    // and say plainly that the figure is a projection, not a record
+    var isProjected=false;
+    if(month>monthOf(todayISO())){
+      var fc=forecastForMonth(month);
+      if(fc.length){
+        isProjected=true;
+        fc.forEach(function(rt){ if(catType(rt.cat)==="in") inc+=rt.amount; else out+=rt.amount; });
+      }
+    }
+    $("netLabel").textContent = isProjected ? "Projected net · based on recurring" : "Net this month";
     var net=inc-out;
     var netEl=$("net");
     netEl.textContent=(net<0?"−":"")+fmt(net);
@@ -1549,8 +1562,8 @@
   $("clearFilters").onclick=function(){ filterCat=""; filterAcct=""; render(); };
 
   // ---- month nav ----
-  $("prevM").onclick=function(){month=monthBefore(month);txnsExpanded=false;expandedGroups={};render()};
-  $("nextM").onclick=function(){month=monthAfter(month);txnsExpanded=false;expandedGroups={};render()};
+  $("prevM").onclick=function(){month=monthBefore(month);txnsExpandedOut=false;txnsExpandedIn=false;expandedGroupsOut={};expandedGroupsIn={};render()};
+  $("nextM").onclick=function(){month=monthAfter(month);txnsExpandedOut=false;txnsExpandedIn=false;expandedGroupsOut={};expandedGroupsIn={};render()};
 
   // ---- currency ----
   function round2(n){ return Math.round(n*100)/100; }
