@@ -191,7 +191,7 @@
 
   <!-- where it went -->
   <div style="margin-top:16px">
-    <div class="sec">Where it went</div>
+    <div class="sec">By category</div>
     <div class="card" id="breakdown" style="padding:14px"></div>
   </div>
 
@@ -1136,38 +1136,44 @@
     $("paneChevOut").textContent = paneCollapsedOut ? "▸" : "▾";
     $("paneChevIn").textContent = paneCollapsedIn ? "▸" : "▾";
 
-    // breakdown
+    // breakdown — every category, both directions, since this now covers
+    // "by category" rather than spending only
     var m={}, byPayeeCat={};
     mt.forEach(function(t){
-      if(catType(t.cat)==="out"){
-        m[t.cat]=(m[t.cat]||0)+effAmt(t);
-        if(!byPayeeCat[t.cat]) byPayeeCat[t.cat]={};
-        var pn=t.payee||"(no payee)";
-        byPayeeCat[t.cat][pn]=(byPayeeCat[t.cat][pn]||0)+effAmt(t);
-      }
+      m[t.cat]=(m[t.cat]||0)+effAmt(t);
+      if(!byPayeeCat[t.cat]) byPayeeCat[t.cat]={};
+      var pn=t.payee||"(no payee)";
+      byPayeeCat[t.cat][pn]=(byPayeeCat[t.cat][pn]||0)+effAmt(t);
     });
     var arr=Object.keys(m).map(function(k){return [k,m[k]]}).sort(function(a,b){return b[1]-a[1]});
     var bd=$("breakdown"); bd.innerHTML="";
-    if(arr.length===0){var z=document.createElement("div");z.style.cssText="color:var(--sub);font-size:17px";z.textContent="No spending yet.";bd.appendChild(z);}
+    if(arr.length===0){var z=document.createElement("div");z.style.cssText="color:var(--sub);font-size:17px";z.textContent="Nothing logged yet.";bd.appendChild(z);}
     var max=arr.length?arr[0][1]:1;
     arr.forEach(function(p){
+      var isInc=catType(p[0])==="in";
+      var dirColor=isInc?"var(--income)":"var(--spend)";
       var w=document.createElement("div"); w.className="witRow"; w.style.cssText="margin-bottom:12px;cursor:pointer";
-      // tooltip: every payee within this category, largest first
+      // tooltip: every payee/payer within this category, largest first,
+      // signed to match direction
       var payeeMap=byPayeeCat[p[0]]||{};
       var payeeNames=Object.keys(payeeMap).sort(function(a,b){return payeeMap[b]-payeeMap[a]});
-      var payeeRows=payeeNames.map(function(pn){return {label:pn, value:fmt(payeeMap[pn])};});
-      var head=document.createElement("div"); head.style.cssText="display:flex;justify-content:space-between;font-size:17px;margin-bottom:5px";
-      var l=document.createElement("span"); l.style.cssText="display:flex;align-items:center;gap:8px";
+      var payeeRows=payeeNames.map(function(pn){return {label:pn, value:(isInc?"+":"−")+fmt(payeeMap[pn])};});
+      var head=document.createElement("div"); head.style.cssText="display:flex;justify-content:space-between;align-items:center;font-size:17px;margin-bottom:5px";
+      var l=document.createElement("span"); l.style.cssText="display:flex;align-items:center;gap:7px;min-width:0";
+      var badge=document.createElement("span"); badge.textContent=isInc?"IN":"OUT";
+      badge.style.cssText="font-family:var(--mono);font-size:10px;letter-spacing:1px;padding:2px 5px;border-radius:4px;"+
+        "flex:0 0 auto;color:"+dirColor+";border:1px solid "+dirColor;
       var dot=document.createElement("span");
       dot.style.cssText="width:10px;height:10px;border-radius:50%;background:"+catColor(p[0])+";display:inline-block;flex:0 0 auto";
-      var lt=document.createElement("span"); lt.textContent=catName(p[0]);
-      l.appendChild(dot); l.appendChild(lt);
-      var r=document.createElement("span"); r.className="tnum"; r.style.color="var(--sub)"; r.textContent=fmt(p[1]);
+      var lt=document.createElement("span"); lt.textContent=catName(p[0]); lt.style.cssText="overflow:hidden;text-overflow:ellipsis;white-space:nowrap";
+      l.appendChild(badge); l.appendChild(dot); l.appendChild(lt);
+      var r=document.createElement("span"); r.className="tnum"; r.style.cssText="color:"+dirColor+";flex:0 0 auto;padding-left:8px";
+      r.textContent=(isInc?"+":"−")+fmt(p[1]);
       head.appendChild(l); head.appendChild(r);
       var bg=document.createElement("div"); bg.className="barbg";
       var bar=document.createElement("div"); bar.className="bar"; bar.style.width=((p[1]/max)*100)+"%";
       bar.style.background=catColor(p[0]);
-      wireTooltip(w, catName(p[0])+" — "+fmt(p[1]), payeeRows, bar);
+      wireTooltip(w, catName(p[0])+" · "+(isInc?"Income":"Spending")+" — "+(isInc?"+":"−")+fmt(p[1]), payeeRows, bar);
       bg.appendChild(bar); w.appendChild(head); w.appendChild(bg); bd.appendChild(w);
     });
 
@@ -1215,7 +1221,7 @@
         right.innerHTML='<span style="color:'+(net<0?"var(--spend)":"var(--income)")+'">'+(net<0?"−":"+")+fmt(net)+'</span> net';
       }
       row.appendChild(badge); row.appendChild(name); row.appendChild(right); block.appendChild(row);
-      // segmented category bar — same colors as "Where it went", so a category
+      // segmented category bar — same colors as "By category", so a category
       // reads as the same color everywhere in the app
       var catBreak=accCat[k];
       if(catBreak){
