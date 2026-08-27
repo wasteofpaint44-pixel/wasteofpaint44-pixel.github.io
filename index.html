@@ -70,7 +70,12 @@
   .row{display:flex;align-items:center;gap:10px;padding:13px 15px}
   .row+.row{border-top:1px solid var(--hair)}
   .barbg{height:9px;background:var(--track);border-radius:2px;overflow:hidden}
-  .bar{height:100%;background:var(--spendBright);border-radius:2px}
+  .bar{height:100%;background:var(--spendBright);border-radius:2px;transition:filter .05s}
+  /* CSS :hover fires before any JS event handler can run, so this is the
+     fastest possible feedback that you're over a hoverable bar/segment */
+  .witRow:hover .bar{filter:brightness(1.35)}
+  .acctSeg{transition:filter .05s}
+  .acctSeg:hover{filter:brightness(1.35)}
   .drawer-bg{position:fixed;inset:0;background:rgba(11,11,12,.55);display:flex;
        justify-content:flex-end;z-index:10}
   .drawer{width:360px;max-width:92vw;height:100%;background:var(--wash);padding:22px;
@@ -154,40 +159,40 @@
     </div>
   </div>
 
-  <!-- columns -->
-  <div style="display:flex;flex-wrap:wrap;gap:16px">
-    <div style="flex:1 1 480px;min-width:300px">
-      <div style="display:flex;align-items:baseline;justify-content:space-between;gap:8px;margin-bottom:9px;flex-wrap:wrap">
-        <div class="sec" style="margin:0">Transactions</div>
-        <div style="display:flex;gap:6px;flex-wrap:wrap">
-          <select id="filterCat" style="padding:5px 7px;font-size:12px;width:auto">
-            <option value="">All categories</option>
-          </select>
-          <select id="filterAcct" style="padding:5px 7px;font-size:12px;width:auto">
-            <option value="">All accounts</option>
-          </select>
-          <button class="ghost hide" id="clearFilters" style="padding:5px 8px;font-size:11px">Clear</button>
-        </div>
-      </div>
-      <div style="display:flex;gap:16px;flex-wrap:wrap">
-        <div style="flex:1 1 220px;min-width:220px">
-          <div class="sec paneHead" id="paneHeadOut" style="margin-bottom:6px;cursor:pointer;user-select:none">
-            <span id="paneChevOut">▾</span> Spending
-          </div>
-          <div class="card" id="txnListOut" style="overflow:hidden"></div>
-        </div>
-        <div style="flex:1 1 220px;min-width:220px">
-          <div class="sec paneHead" id="paneHeadIn" style="margin-bottom:6px;cursor:pointer;user-select:none">
-            <span id="paneChevIn">▾</span> Income
-          </div>
-          <div class="card" id="txnListIn" style="overflow:hidden"></div>
-        </div>
+  <!-- transactions -->
+  <div>
+    <div style="display:flex;align-items:baseline;justify-content:space-between;gap:8px;margin-bottom:9px;flex-wrap:wrap">
+      <div class="sec" style="margin:0">Transactions</div>
+      <div style="display:flex;gap:6px;flex-wrap:wrap">
+        <select id="filterCat" style="padding:5px 7px;font-size:12px;width:auto">
+          <option value="">All categories</option>
+        </select>
+        <select id="filterAcct" style="padding:5px 7px;font-size:12px;width:auto">
+          <option value="">All accounts</option>
+        </select>
+        <button class="ghost hide" id="clearFilters" style="padding:5px 8px;font-size:11px">Clear</button>
       </div>
     </div>
-    <div style="flex:1 1 260px;min-width:240px">
-      <div class="sec">Where it went</div>
-      <div class="card" id="breakdown" style="padding:14px"></div>
+    <div style="display:flex;gap:16px;flex-wrap:wrap">
+      <div style="flex:1 1 220px;min-width:220px">
+        <div class="sec paneHead" id="paneHeadOut" style="margin-bottom:6px;cursor:pointer;user-select:none">
+          <span id="paneChevOut">▾</span> Spending
+        </div>
+        <div class="card" id="txnListOut" style="overflow:hidden"></div>
+      </div>
+      <div style="flex:1 1 220px;min-width:220px">
+        <div class="sec paneHead" id="paneHeadIn" style="margin-bottom:6px;cursor:pointer;user-select:none">
+          <span id="paneChevIn">▾</span> Income
+        </div>
+        <div class="card" id="txnListIn" style="overflow:hidden"></div>
+      </div>
     </div>
+  </div>
+
+  <!-- where it went -->
+  <div style="margin-top:16px">
+    <div class="sec">Where it went</div>
+    <div class="card" id="breakdown" style="padding:14px"></div>
   </div>
 
   <!-- by account -->
@@ -236,6 +241,13 @@
 </div>
 
 <!-- single entry point: floating button, reachable one-thumb, scrolls with viewport -->
+<!-- themed tooltip: one shared element, positioned on demand, styled via the
+     active theme's CSS variables so it matches whichever palette is chosen -->
+<div id="customTooltip" class="hide" style="position:fixed;z-index:60;pointer-events:none;
+  background:var(--card);border:1.5px solid var(--line);border-radius:8px;
+  padding:10px 12px;box-shadow:0 8px 22px rgba(0,0,0,.32);max-width:260px;
+  font-family:var(--sans);font-size:13px;color:var(--ink)"></div>
+
 <button id="manageFab" style="position:fixed;right:18px;bottom:18px;z-index:20;border-radius:999px;
   padding:14px 22px;box-shadow:0 6px 18px rgba(0,0,0,.35);background:var(--heroBg);color:var(--heroFg);
   border:1.5px solid var(--heroBg);font-family:var(--mono);font-size:14px;letter-spacing:.1em;
@@ -489,6 +501,63 @@
     var dark=themeById(theme).dark;
     return hslToHex(hue, dark?58:60, dark?62:44);
   }
+
+  // ---- themed tooltip ----
+  // one shared floating element; content is built as real DOM (not a native
+  // title attribute) so it can use the app's own CSS variables and re-skin
+  // automatically with whichever theme is active.
+  var tooltipHideTimer=null;
+  function showTooltip(anchorEl, headerText, rows){
+    if(tooltipHideTimer){ clearTimeout(tooltipHideTimer); tooltipHideTimer=null; }
+    var tt=$("customTooltip");
+    tt.innerHTML="";
+    var h=document.createElement("div");
+    h.style.cssText="font-weight:700;margin-bottom:6px;font-size:14px";
+    h.textContent=headerText;
+    tt.appendChild(h);
+    rows.forEach(function(r){
+      var row=document.createElement("div");
+      row.style.cssText="display:flex;justify-content:space-between;gap:16px;padding:2px 0";
+      var l=document.createElement("span"); l.style.color="var(--sub)"; l.textContent=r.label;
+      var v=document.createElement("span"); v.className="tnum"; v.style.color="var(--ink)"; v.textContent=r.value;
+      row.appendChild(l); row.appendChild(v); tt.appendChild(row);
+    });
+    tt.classList.remove("hide");
+    var rect=anchorEl.getBoundingClientRect();
+    // measure once, then position directly (flip above/below, clamp
+    // horizontally) — no intermediate reset, so there's nothing to visibly jump
+    var ttH=tt.offsetHeight, ttW=tt.offsetWidth;
+    var top=rect.top-ttH-8;
+    if(top<8) top=rect.bottom+8;
+    var left=Math.min(Math.max(8, rect.left), window.innerWidth-ttW-8);
+    tt.style.top=top+"px"; tt.style.left=left+"px";
+  }
+  // hides on a very short defer rather than instantly — moving the cursor
+  // between two adjacent thin segments would otherwise hide-then-immediately-
+  // reshow the tooltip, which reads as flicker/lag. Showing is never delayed.
+  function hideTooltip(){
+    if(tooltipHideTimer)clearTimeout(tooltipHideTimer);
+    tooltipHideTimer=setTimeout(function(){ $("customTooltip").classList.add("hide"); tooltipHideTimer=null; }, 60);
+  }
+  // hover for desktop, tap-to-toggle for touch (mouseenter never fires there).
+  // highlightEl (defaults to el itself) gets a brightness bump while the
+  // tooltip's open, so it's obvious which bar/segment you're reading about —
+  // filter is used rather than an outline/box-shadow since both bar containers
+  // clip overflow, which would crop a ring right at the edge.
+  function wireTooltip(el, headerText, rows, highlightEl){
+    highlightEl = highlightEl || el;
+    function on(){ highlightEl.style.filter="brightness(1.22)"; showTooltip(el, headerText, rows); }
+    function off(){ highlightEl.style.filter=""; hideTooltip(); }
+    el.addEventListener("mouseenter", on);
+    el.addEventListener("mouseleave", off);
+    el.addEventListener("click",function(e){
+      e.stopPropagation();
+      var isOpen = !$("customTooltip").classList.contains("hide");
+      off();
+      if(!isOpen) on();
+    });
+  }
+
   function applyTheme(id){
     var t=themeById(id); var root=document.documentElement.style;
     Object.keys(t.vars).forEach(function(k){ root.setProperty("--"+k, t.vars[k]); });
@@ -1068,14 +1137,25 @@
     $("paneChevIn").textContent = paneCollapsedIn ? "▸" : "▾";
 
     // breakdown
-    var m={};
-    mt.forEach(function(t){ if(catType(t.cat)==="out") m[t.cat]=(m[t.cat]||0)+effAmt(t); });
+    var m={}, byPayeeCat={};
+    mt.forEach(function(t){
+      if(catType(t.cat)==="out"){
+        m[t.cat]=(m[t.cat]||0)+effAmt(t);
+        if(!byPayeeCat[t.cat]) byPayeeCat[t.cat]={};
+        var pn=t.payee||"(no payee)";
+        byPayeeCat[t.cat][pn]=(byPayeeCat[t.cat][pn]||0)+effAmt(t);
+      }
+    });
     var arr=Object.keys(m).map(function(k){return [k,m[k]]}).sort(function(a,b){return b[1]-a[1]});
     var bd=$("breakdown"); bd.innerHTML="";
     if(arr.length===0){var z=document.createElement("div");z.style.cssText="color:var(--sub);font-size:17px";z.textContent="No spending yet.";bd.appendChild(z);}
     var max=arr.length?arr[0][1]:1;
     arr.forEach(function(p){
-      var w=document.createElement("div"); w.style.marginBottom="12px";
+      var w=document.createElement("div"); w.className="witRow"; w.style.cssText="margin-bottom:12px;cursor:pointer";
+      // tooltip: every payee within this category, largest first
+      var payeeMap=byPayeeCat[p[0]]||{};
+      var payeeNames=Object.keys(payeeMap).sort(function(a,b){return payeeMap[b]-payeeMap[a]});
+      var payeeRows=payeeNames.map(function(pn){return {label:pn, value:fmt(payeeMap[pn])};});
       var head=document.createElement("div"); head.style.cssText="display:flex;justify-content:space-between;font-size:17px;margin-bottom:5px";
       var l=document.createElement("span"); l.style.cssText="display:flex;align-items:center;gap:8px";
       var dot=document.createElement("span");
@@ -1087,12 +1167,14 @@
       var bg=document.createElement("div"); bg.className="barbg";
       var bar=document.createElement("div"); bar.className="bar"; bar.style.width=((p[1]/max)*100)+"%";
       bar.style.background=catColor(p[0]);
+      wireTooltip(w, catName(p[0])+" — "+fmt(p[1]), payeeRows, bar);
       bg.appendChild(bar); w.appendChild(head); w.appendChild(bg); bd.appendChild(w);
     });
 
     // by account
     var am={};
-    var accCat={};   // per-account spending by category, for the segmented mini-bar below
+    var accCat={};       // per-account spending by category, for the segmented mini-bar below
+    var accCatPayee={};  // per-account, per-category, per-payee — for the segment tooltip
     mt.forEach(function(t){
       var k=t.acct||"__none";
       if(!am[k])am[k]={inc:0,out:0};
@@ -1101,6 +1183,10 @@
         am[k].out+=effAmt(t);
         if(!accCat[k])accCat[k]={};
         accCat[k][t.cat]=(accCat[k][t.cat]||0)+effAmt(t);
+        if(!accCatPayee[k])accCatPayee[k]={};
+        if(!accCatPayee[k][t.cat])accCatPayee[k][t.cat]={};
+        var pn2=t.payee||"(no payee)";
+        accCatPayee[k][t.cat][pn2]=(accCatPayee[k][t.cat][pn2]||0)+effAmt(t);
       }
     });
     var as=$("acctSummary"); as.innerHTML="";
@@ -1139,9 +1225,12 @@
           var seg=document.createElement("div");
           seg.style.cssText="display:flex;height:6px;border-radius:2px;overflow:hidden;margin-top:8px";
           catKeys.forEach(function(ck){
-            var s=document.createElement("span");
-            s.title=catName(ck)+" · "+fmt(catBreak[ck]);
-            s.style.cssText="display:inline-block;height:100%;background:"+catColor(ck)+";width:"+((catBreak[ck]/total)*100)+"%";
+            var s=document.createElement("span"); s.className="acctSeg";
+            var payeeMap2=(accCatPayee[k]&&accCatPayee[k][ck])||{};
+            var payeeNames2=Object.keys(payeeMap2).sort(function(a,b){return payeeMap2[b]-payeeMap2[a]});
+            var payeeRows2=payeeNames2.map(function(pn){return {label:pn, value:fmt(payeeMap2[pn])};});
+            wireTooltip(s, catName(ck)+" · "+fmt(catBreak[ck]), payeeRows2);
+            s.style.cssText="display:inline-block;height:100%;cursor:pointer;background:"+catColor(ck)+";width:"+((catBreak[ck]/total)*100)+"%";
             seg.appendChild(s);
           });
           block.appendChild(seg);
@@ -1529,6 +1618,7 @@
     if(!menu.classList.contains("hide") && e.target!==btn && !menu.contains(e.target)){
       menu.classList.add("hide");
     }
+    hideTooltip();
   });
 
   // ---- CSV export ----
